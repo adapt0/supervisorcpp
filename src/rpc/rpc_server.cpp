@@ -273,6 +273,23 @@ void RpcConnection::handle_read(const boost::system::error_code& error, size_t b
         return;  // Connection closed or error
     }
 
+    // SECURITY/ROBUSTNESS: Limit maximum request size to 1MB to prevent memory exhaustion
+    constexpr size_t MAX_REQUEST_SIZE = 1024 * 1024;  // 1MB
+
+    if (request_data_.size() + bytes_transferred > MAX_REQUEST_SIZE) {
+        LOG_WARN << "RPC request too large (" << (request_data_.size() + bytes_transferred)
+                 << " bytes), rejecting. Max size: " << MAX_REQUEST_SIZE;
+
+        // Send fault response and close connection
+        std::string fault = generate_xmlrpc_fault(1, "Request too large (max 1MB)");
+        std::string response = generate_http_response(fault);
+        boost::asio::async_write(socket_, boost::asio::buffer(response),
+            [self = shared_from_this()](const boost::system::error_code&, size_t) {
+                self->socket_.close();
+            });
+        return;
+    }
+
     request_data_.append(buffer_.data(), bytes_transferred);
 
     // Check if we have complete HTTP request (ends with \r\n\r\n or \n\n)

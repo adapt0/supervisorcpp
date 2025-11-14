@@ -367,6 +367,11 @@ void Process::setup_child_process() {
     signal(SIGTERM, SIG_DFL);
     signal(SIGINT, SIG_DFL);
 
+    // SECURITY: Close all inherited file descriptors (except stdin/stdout/stderr)
+    // This prevents child from accessing parent's sockets, log files, etc.
+    // Must be called AFTER stdio redirection in spawn()
+    security::close_inherited_fds();
+
     // SECURITY: Set resource limits before dropping privileges
     security::set_child_resource_limits();
 

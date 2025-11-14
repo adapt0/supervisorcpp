@@ -266,6 +266,29 @@ inline void validate_command_path(const std::string& command) {
 }
 
 /**
+ * Close all file descriptors except stdin/stdout/stderr
+ * This prevents child processes from inheriting parent's file descriptors
+ * (sockets, log files, etc.) which could cause:
+ * - File descriptor leaks
+ * - Child processes interfering with parent's files/sockets
+ * - Security issues if child is compromised
+ *
+ * Note: This should be called AFTER stdout/stderr have been redirected
+ * in the child process, but BEFORE exec.
+ */
+inline void close_inherited_fds() {
+    // Get maximum number of file descriptors
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl) == 0) {
+        // Close all fds from 3 to max (keeping 0=stdin, 1=stdout, 2=stderr)
+        int max_fd = (rl.rlim_max == RLIM_INFINITY) ? 1024 : static_cast<int>(rl.rlim_max);
+        for (int fd = 3; fd < max_fd; fd++) {
+            close(fd);  // Ignore errors (fd may not be open)
+        }
+    }
+}
+
+/**
  * Set resource limits for child process
  */
 inline void set_child_resource_limits() {
