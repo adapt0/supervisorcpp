@@ -61,6 +61,7 @@ add_executable(supervisorctl
     src/ctl/supervisorctl.cpp
 )
 target_link_libraries(supervisorctl
+    supervisord_lib
     ${Boost_LIBRARIES}
     pthread
 )
