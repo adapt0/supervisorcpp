@@ -10,7 +10,7 @@
 namespace po = boost::program_options;
 using namespace supervisord;
 
-int main(int argc, char* argv[]) {
+int supervisord_main(int argc, char* argv[]) {
     try {
         // Parse command line options
         po::options_description desc("supervisord - process control system");

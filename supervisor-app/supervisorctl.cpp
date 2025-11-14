@@ -315,7 +315,7 @@ void interactive_mode(SupervisorctlClient& client) {
     }
 }
 
-int main(int argc, char* argv[]) {
+int supervisorctl_main(int argc, char* argv[]) {
     try {
         po::options_description desc("supervisorctl - control supervisord processes");
         desc.add_options()

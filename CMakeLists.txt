@@ -25,18 +25,19 @@ find_package(Boost 1.75 REQUIRED COMPONENTS
 # Include directories
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/supervisor-lib
+    ${CMAKE_SOURCE_DIR}/supervisor-app
     ${Boost_INCLUDE_DIRS}
 )
 
-# Source files for libsupervisord (shared library for testing)
+# Source files for libsupervisord (library code only)
 set(SUPERVISORD_LIB_SOURCES
-    src/config/config_parser.cpp
-    src/util/logger.cpp
-    src/process/process.cpp
-    src/process/process_manager.cpp
-    src/process/log_writer.cpp
-    src/rpc/rpc_server.cpp
+    supervisor-lib/config/config_parser.cpp
+    supervisor-lib/util/logger.cpp
+    supervisor-lib/process/process.cpp
+    supervisor-lib/process/process_manager.cpp
+    supervisor-lib/process/log_writer.cpp
+    supervisor-lib/rpc/rpc_server.cpp
 )
 
 # Create static library for easier testing
@@ -46,24 +47,26 @@ target_link_libraries(supervisord_lib
     pthread
 )
 
-# Main supervisord executable
-add_executable(supervisord
-    src/main.cpp
+# Unified supervisor binary (busybox-style multi-call binary)
+add_executable(supervisor
+    supervisor-app/main.cpp
+    supervisor-app/supervisord.cpp
+    supervisor-app/supervisorctl.cpp
 )
-target_link_libraries(supervisord
+target_link_libraries(supervisor
     supervisord_lib
     ${Boost_LIBRARIES}
     pthread
 )
 
-# supervisorctl executable (placeholder for later)
-add_executable(supervisorctl
-    src/ctl/supervisorctl.cpp
-)
-target_link_libraries(supervisorctl
-    supervisord_lib
-    ${Boost_LIBRARIES}
-    pthread
+# Create symlinks in build directory for testing/development
+add_custom_command(TARGET supervisor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        supervisor supervisord
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
+        supervisor supervisorctl
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Creating symlinks for busybox-style invocation"
 )
 
 # Enable testing
@@ -115,9 +118,17 @@ add_test(NAME XmlRpcParserTest COMMAND xmlrpc_parser_test)
 add_test(NAME IntegrationTest COMMAND integration_test)
 
 # Install targets
-install(TARGETS supervisord supervisorctl
+install(TARGETS supervisor
     RUNTIME DESTINATION bin
 )
+
+# Create symlinks for busybox-style invocation
+install(CODE "
+    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+        supervisor \${CMAKE_INSTALL_PREFIX}/bin/supervisord)
+    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+        supervisor \${CMAKE_INSTALL_PREFIX}/bin/supervisorctl)
+")
 
 # Print configuration summary
 message(STATUS "")
