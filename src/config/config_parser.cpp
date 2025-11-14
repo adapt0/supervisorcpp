@@ -46,7 +46,11 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
                 config.supervisord.logfile = *logfile;
             }
             if (auto loglevel = section->get_optional<std::string>("loglevel")) {
-                config.supervisord.loglevel = parse_log_level(*loglevel);
+                try {
+                    config.supervisord.loglevel = parse_log_level(*loglevel);
+                } catch (const std::invalid_argument& e) {
+                    throw ConfigParseError("[supervisord] " + std::string(e.what()));
+                }
             }
             if (auto user = section->get_optional<std::string>("user")) {
                 config.supervisord.user = *user;
@@ -105,7 +109,11 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
 
                 // Optional: stdout_logfile_maxbytes
                 if (auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
-                    prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
+                    try {
+                        prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
+                    } catch (const std::invalid_argument& e) {
+                        throw ConfigParseError("Program [" + key + "]: " + e.what());
+                    }
                 }
 
                 // Optional: redirect_stderr
@@ -132,8 +140,16 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
 
                 // Optional: stopsignal
                 if (auto stopsignal = value.get_optional<std::string>("stopsignal")) {
-                    prog.stopsignal = *stopsignal;
+                    try {
+                        validate_signal(*stopsignal);
+                        prog.stopsignal = *stopsignal;
+                    } catch (const std::invalid_argument& e) {
+                        throw ConfigParseError("Program [" + key + "]: " + e.what());
+                    }
                 }
+
+                // Apply variable substitution to command
+                prog.command = prog.substitute_variables(prog.command);
 
                 config.programs.push_back(std::move(prog));
             }
@@ -168,7 +184,11 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
                 config.supervisord.logfile = *logfile;
             }
             if (auto loglevel = section->get_optional<std::string>("loglevel")) {
-                config.supervisord.loglevel = parse_log_level(*loglevel);
+                try {
+                    config.supervisord.loglevel = parse_log_level(*loglevel);
+                } catch (const std::invalid_argument& e) {
+                    throw ConfigParseError("[supervisord] " + std::string(e.what()));
+                }
             }
             if (auto user = section->get_optional<std::string>("user")) {
                 config.supervisord.user = *user;
@@ -245,7 +265,11 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
 
                 // Optional: stdout_logfile_maxbytes
                 if (auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
-                    prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
+                    try {
+                        prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
+                    } catch (const std::invalid_argument& e) {
+                        throw ConfigParseError("Program [" + key + "]: " + e.what());
+                    }
                 }
 
                 // Optional: redirect_stderr
@@ -272,8 +296,16 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
 
                 // Optional: stopsignal
                 if (auto stopsignal = value.get_optional<std::string>("stopsignal")) {
-                    prog.stopsignal = *stopsignal;
+                    try {
+                        validate_signal(*stopsignal);
+                        prog.stopsignal = *stopsignal;
+                    } catch (const std::invalid_argument& e) {
+                        throw ConfigParseError("Program [" + key + "]: " + e.what());
+                    }
                 }
+
+                // Apply variable substitution to command
+                prog.command = prog.substitute_variables(prog.command);
 
                 config.programs.push_back(std::move(prog));
             }
@@ -350,20 +382,39 @@ std::map<std::string, std::string> ConfigParser::parse_environment(const std::st
         pair.erase(0, pair.find_first_not_of(" \t"));
         pair.erase(pair.find_last_not_of(" \t") + 1);
 
+        // Skip empty pairs
+        if (pair.empty()) {
+            continue;
+        }
+
         // Split by '='
         size_t eq_pos = pair.find('=');
-        if (eq_pos != std::string::npos) {
-            std::string key = pair.substr(0, eq_pos);
-            std::string value = pair.substr(eq_pos + 1);
-
-            // Trim key and value
-            key.erase(0, key.find_first_not_of(" \t"));
-            key.erase(key.find_last_not_of(" \t") + 1);
-            value.erase(0, value.find_first_not_of(" \t"));
-            value.erase(value.find_last_not_of(" \t") + 1);
-
-            env_map[key] = value;
+        if (eq_pos == std::string::npos) {
+            throw ConfigParseError("Invalid environment variable format (missing '='): " + pair);
         }
+
+        std::string key = pair.substr(0, eq_pos);
+        std::string value = pair.substr(eq_pos + 1);
+
+        // Trim key and value
+        key.erase(0, key.find_first_not_of(" \t"));
+        key.erase(key.find_last_not_of(" \t") + 1);
+        value.erase(0, value.find_first_not_of(" \t"));
+        value.erase(value.find_last_not_of(" \t") + 1);
+
+        // Strip surrounding quotes from value if present
+        if (value.size() >= 2) {
+            if ((value.front() == '"' && value.back() == '"') ||
+                (value.front() == '\'' && value.back() == '\'')) {
+                value = value.substr(1, value.size() - 2);
+            }
+        }
+
+        if (key.empty()) {
+            throw ConfigParseError("Invalid environment variable format (empty key): " + pair);
+        }
+
+        env_map[key] = value;
     }
 
     return env_map;
@@ -374,6 +425,16 @@ void ConfigParser::validate_config(const Configuration& config) {
     // unix_http_server is required for RPC
     if (config.unix_http_server.socket_file.empty()) {
         throw ConfigParseError("Missing [unix_http_server] section or 'file' parameter");
+    }
+
+    // Check that supervisord section has a logfile
+    if (config.supervisord.logfile.empty()) {
+        throw ConfigParseError("Missing [supervisord] section or 'logfile' parameter");
+    }
+
+    // Check that supervisorctl section has a serverurl
+    if (config.supervisorctl.serverurl.empty()) {
+        throw ConfigParseError("Missing [supervisorctl] section or 'serverurl' parameter");
     }
 
     // Validate each program has required fields

@@ -79,8 +79,19 @@ target_link_libraries(config_test
     pthread
 )
 
+# Parser robustness tests
+add_executable(parser_robustness_test
+    tests/config/parser_robustness_test.cpp
+)
+target_link_libraries(parser_robustness_test
+    supervisord_lib
+    ${Boost_LIBRARIES}
+    pthread
+)
+
 # Register tests with CTest
 add_test(NAME ConfigParserTest COMMAND config_test)
+add_test(NAME ParserRobustnessTest COMMAND parser_robustness_test)
 
 # Install targets
 install(TARGETS supervisord supervisorctl

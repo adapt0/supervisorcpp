@@ -61,9 +61,20 @@ inline size_t parse_size(const std::string& size_str) {
     }
 
     try {
-        return std::stoull(num_str) * multiplier;
-    } catch (...) {
-        return 50 * 1024 * 1024; // Default: 50MB
+        // Validate that the number part only contains digits and optional whitespace
+        std::string trimmed = num_str;
+        trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+        trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
+
+        if (trimmed.empty() || !std::all_of(trimmed.begin(), trimmed.end(), ::isdigit)) {
+            throw std::invalid_argument("Invalid size format: " + size_str);
+        }
+
+        return std::stoull(trimmed) * multiplier;
+    } catch (const std::invalid_argument&) {
+        throw std::invalid_argument("Invalid size format: " + size_str);
+    } catch (const std::out_of_range&) {
+        throw std::invalid_argument("Size value out of range: " + size_str);
     }
 }
 
@@ -75,9 +86,25 @@ inline LogLevel parse_log_level(const std::string& level_str) {
     std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
 
     if (lower == "debug") return LogLevel::DEBUG;
+    if (lower == "info") return LogLevel::INFO;
     if (lower == "warn" || lower == "warning") return LogLevel::WARN;
     if (lower == "error") return LogLevel::ERROR;
-    return LogLevel::INFO; // default
+
+    // Invalid log level
+    throw std::invalid_argument("Invalid log level: " + level_str);
+}
+
+/**
+ * Validate signal name
+ */
+inline void validate_signal(const std::string& signal_name) {
+    const std::vector<std::string> valid_signals = {
+        "TERM", "HUP", "INT", "QUIT", "KILL", "USR1", "USR2", "ABRT", "ALRM", "CONT", "STOP"
+    };
+
+    if (std::find(valid_signals.begin(), valid_signals.end(), signal_name) == valid_signals.end()) {
+        throw std::invalid_argument("Invalid signal name: " + signal_name);
+    }
 }
 
 /**
