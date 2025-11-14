@@ -23,7 +23,7 @@ ProcessManager::~ProcessManager() {
 }
 
 void ProcessManager::add_process(const config::ProgramConfig& config) {
-    auto process = std::make_unique<Process>(config);
+    auto process = std::make_unique<Process>(io_context_, config);
     Process* proc_ptr = process.get();
 
     processes_.push_back(std::move(process));

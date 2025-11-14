@@ -35,6 +35,7 @@ set(SUPERVISORD_LIB_SOURCES
     src/util/logger.cpp
     src/process/process.cpp
     src/process/process_manager.cpp
+    src/process/log_writer.cpp
 )
 
 # Create static library for easier testing

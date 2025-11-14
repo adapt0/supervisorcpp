@@ -16,14 +16,24 @@
 namespace supervisord {
 namespace process {
 
-Process::Process(const config::ProgramConfig& config)
+Process::Process(boost::asio::io_context& io_context, const config::ProgramConfig& config)
     : config_(config)
+    , io_context_(io_context)
     , state_(config::ProcessState::STOPPED)
     , pid_(-1)
     , exitstatus_(0)
     , retry_count_(0)
     , state_change_time_(std::chrono::steady_clock::now())
 {
+    // Create log writer if logging is configured
+    if (config_.stdout_logfile.has_value()) {
+        log_writer_ = std::make_unique<LogWriter>(
+            *config_.stdout_logfile,
+            config_.stdout_logfile_maxbytes,
+            config_.stdout_logfile_backups
+        );
+    }
+
     LOG_INFO << "Process '" << config_.name << "' created";
 }
 
@@ -33,12 +43,15 @@ Process::~Process() {
         kill();
     }
 
-    // Close file descriptors
-    if (stdout_fd_) {
-        close(*stdout_fd_);
+    // Close stream descriptors
+    if (stdout_stream_ && stdout_stream_->is_open()) {
+        boost::system::error_code ec;
+        stdout_stream_->close(ec);
     }
-    if (stderr_fd_) {
-        close(*stderr_fd_);
+
+    // Close log writer
+    if (log_writer_) {
+        log_writer_->close();
     }
 }
 
@@ -314,15 +327,32 @@ pid_t Process::spawn() {
     if (stdout_pipe[1] >= 0) close(stdout_pipe[1]);
     if (stderr_pipe[1] >= 0) close(stderr_pipe[1]);
 
-    // Store read ends for later
-    if (stdout_pipe[0] >= 0) {
-        stdout_fd_ = stdout_pipe[0];
-        // Set non-blocking
-        fcntl(*stdout_fd_, F_SETFL, O_NONBLOCK);
+    // Setup async reading from stdout pipe
+    if (stdout_pipe[0] >= 0 && log_writer_) {
+        try {
+            // Set non-blocking
+            fcntl(stdout_pipe[0], F_SETFL, O_NONBLOCK);
+
+            // Create stream descriptor for async reading
+            stdout_stream_ = std::make_unique<boost::asio::posix::stream_descriptor>(
+                io_context_, stdout_pipe[0]
+            );
+
+            // Start async reading
+            start_stdout_read();
+
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Failed to setup async reading for stdout: " << e.what();
+            close(stdout_pipe[0]);
+        }
+    } else if (stdout_pipe[0] >= 0) {
+        // No log writer configured, just close the pipe
+        close(stdout_pipe[0]);
     }
+
+    // For now, we don't handle stderr separately (redirect_stderr handles it)
     if (stderr_pipe[0] >= 0) {
-        stderr_fd_ = stderr_pipe[0];
-        fcntl(*stderr_fd_, F_SETFL, O_NONBLOCK);
+        close(stderr_pipe[0]);
     }
 
     return child_pid;
@@ -475,6 +505,52 @@ void Process::set_state(config::ProcessState new_state) {
 void Process::set_spawn_error(const std::string& error) {
     spawn_error_ = error;
     LOG_ERROR << "Spawn error for '" << config_.name << "': " << error;
+}
+
+void Process::start_stdout_read() {
+    if (!stdout_stream_ || !stdout_stream_->is_open()) {
+        return;
+    }
+
+    stdout_stream_->async_read_some(
+        boost::asio::buffer(stdout_buffer_),
+        [this](const boost::system::error_code& error, size_t bytes_transferred) {
+            handle_stdout_read(error, bytes_transferred);
+        }
+    );
+}
+
+void Process::handle_stdout_read(const boost::system::error_code& error, size_t bytes_transferred) {
+    if (error) {
+        if (error == boost::asio::error::eof) {
+            // End of stream - process closed stdout
+            LOG_DEBUG << "Process '" << config_.name << "' closed stdout";
+        } else if (error != boost::asio::error::operation_aborted) {
+            LOG_ERROR << "Error reading from process '" << config_.name << "' stdout: " << error.message();
+        }
+
+        // Close the stream
+        if (stdout_stream_ && stdout_stream_->is_open()) {
+            boost::system::error_code close_error;
+            stdout_stream_->close(close_error);
+        }
+
+        // Flush any remaining data in log writer
+        if (log_writer_) {
+            log_writer_->flush();
+        }
+
+        return;
+    }
+
+    if (bytes_transferred > 0 && log_writer_) {
+        // Write to log file
+        std::string data(stdout_buffer_.data(), bytes_transferred);
+        log_writer_->write(data);
+    }
+
+    // Continue reading
+    start_stdout_read();
 }
 
 } // namespace process

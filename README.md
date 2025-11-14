@@ -23,6 +23,15 @@ A minimal, embedded-friendly replacement for supervisord written in C++23, desig
 - [x] Autorestart logic with retry backoff
 - [x] Graceful shutdown (SIGTERM → SIGKILL)
 
+**Phase 3: Log Capture & Rotation** ✅ COMPLETE
+
+- [x] Async stdout/stderr capture via Boost.Asio pipes
+- [x] Line-buffered log writing
+- [x] Size-based log rotation on line boundaries
+- [x] Automatic log directory creation
+- [x] Configurable rotation size and backup count
+- [x] Clean rotation (log → log.1 → log.2, etc.)
+
 ## Features
 
 - **Lightweight**: Minimal binary size and memory footprint
@@ -119,7 +128,7 @@ redirect_stderr=true
 
 ## Development Status
 
-### Completed (Phases 1-2)
+### Completed (Phases 1-3)
 - ✅ Configuration parsing (INI format with includes)
 - ✅ Configuration validation
 - ✅ Logging framework (Boost.Log)
@@ -132,13 +141,11 @@ redirect_stderr=true
 - ✅ Autorestart logic with retry backoff
 - ✅ Graceful shutdown (SIGTERM → SIGKILL)
 - ✅ Boost.Asio event loop
+- ✅ Async stdout/stderr capture with pipes
+- ✅ Line-buffered log file writing
+- ✅ Size-based log rotation on line boundaries
 
 ### Upcoming Phases
-
-**Phase 3**: Lifecycle & Logging
-- Log capture (stdout/stderr pipes)
-- Log file writing
-- Size-based log rotation
 
 **Phase 4**: RPC Interface
 - Unix socket server

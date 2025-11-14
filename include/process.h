@@ -1,11 +1,14 @@
 #pragma once
 
 #include "config_types.h"
+#include "log_writer.h"
+#include <boost/asio.hpp>
 #include <sys/types.h>
 #include <chrono>
 #include <memory>
 #include <string>
 #include <optional>
+#include <array>
 
 namespace supervisord {
 namespace process {
@@ -36,7 +39,7 @@ struct ProcessInfo {
  */
 class Process {
 public:
-    explicit Process(const config::ProgramConfig& config);
+    explicit Process(boost::asio::io_context& io_context, const config::ProgramConfig& config);
     ~Process();
 
     // Disable copy, allow move
@@ -143,8 +146,21 @@ private:
      */
     void set_spawn_error(const std::string& error);
 
+    /**
+     * Start async reading from stdout pipe
+     */
+    void start_stdout_read();
+
+    /**
+     * Handle stdout read completion
+     */
+    void handle_stdout_read(const boost::system::error_code& error, size_t bytes_transferred);
+
     // Configuration
     config::ProgramConfig config_;
+
+    // IO context reference
+    boost::asio::io_context& io_context_;
 
     // State
     config::ProcessState state_;
@@ -158,9 +174,12 @@ private:
     TimePoint stop_time_;
     TimePoint state_change_time_;
 
-    // File descriptors for child stdout/stderr
-    std::optional<int> stdout_fd_;
-    std::optional<int> stderr_fd_;
+    // Log writer
+    std::unique_ptr<LogWriter> log_writer_;
+
+    // Async IO for stdout/stderr
+    std::unique_ptr<boost::asio::posix::stream_descriptor> stdout_stream_;
+    std::array<char, 4096> stdout_buffer_;
 };
 
 } // namespace process
