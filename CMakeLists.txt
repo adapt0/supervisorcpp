@@ -89,9 +89,19 @@ target_link_libraries(parser_robustness_test
     pthread
 )
 
+# XML-RPC parser tests
+add_executable(xmlrpc_parser_test
+    tests/rpc/xmlrpc_parser_test.cpp
+)
+target_link_libraries(xmlrpc_parser_test
+    ${Boost_LIBRARIES}
+    pthread
+)
+
 # Register tests with CTest
 add_test(NAME ConfigParserTest COMMAND config_test)
 add_test(NAME ParserRobustnessTest COMMAND parser_robustness_test)
+add_test(NAME XmlRpcParserTest COMMAND xmlrpc_parser_test)
 
 # Install targets
 install(TARGETS supervisord supervisorctl
