@@ -1,4 +1,5 @@
 #include "config_parser.h"
+#include "security.h"
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <sstream>
@@ -14,6 +15,13 @@ namespace pt = boost::property_tree;
 Configuration ConfigParser::parse_file(const fs::path& config_file) {
     if (!fs::exists(config_file)) {
         throw ConfigParseError("Configuration file not found: " + config_file.string());
+    }
+
+    // SECURITY: Validate config file ownership and permissions
+    try {
+        security::validate_config_file_security(config_file);
+    } catch (const security::SecurityError& e) {
+        throw ConfigParseError("Security validation failed: " + std::string(e.what()));
     }
 
     Configuration config;
@@ -82,7 +90,9 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
 
                 // Optional: environment
                 if (auto env = value.get_optional<std::string>("environment")) {
-                    prog.environment = parse_environment(*env);
+                    auto parsed_env = parse_environment(*env);
+                    // SECURITY: Sanitize environment variables
+                    prog.environment = security::sanitize_environment(parsed_env);
                 }
 
                 // Optional: directory
@@ -150,6 +160,23 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
 
                 // Apply variable substitution to command
                 prog.command = prog.substitute_variables(prog.command);
+
+                // SECURITY: Validate command path is absolute and safe
+                try {
+                    security::validate_command_path(prog.command);
+                } catch (const security::SecurityError& e) {
+                    throw ConfigParseError("Program [" + key + "]: " + e.what());
+                }
+
+                // SECURITY: Validate log file paths if specified
+                if (prog.stdout_logfile) {
+                    try {
+                        // This will throw if path is unsafe
+                        prog.stdout_logfile = security::validate_log_path(*prog.stdout_logfile);
+                    } catch (const security::SecurityError& e) {
+                        throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
+                    }
+                }
 
                 config.programs.push_back(std::move(prog));
             }
@@ -238,7 +265,9 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
 
                 // Optional: environment
                 if (auto env = value.get_optional<std::string>("environment")) {
-                    prog.environment = parse_environment(*env);
+                    auto parsed_env = parse_environment(*env);
+                    // SECURITY: Sanitize environment variables
+                    prog.environment = security::sanitize_environment(parsed_env);
                 }
 
                 // Optional: directory
@@ -306,6 +335,23 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
 
                 // Apply variable substitution to command
                 prog.command = prog.substitute_variables(prog.command);
+
+                // SECURITY: Validate command path is absolute and safe
+                try {
+                    security::validate_command_path(prog.command);
+                } catch (const security::SecurityError& e) {
+                    throw ConfigParseError("Program [" + key + "]: " + e.what());
+                }
+
+                // SECURITY: Validate log file paths if specified
+                if (prog.stdout_logfile) {
+                    try {
+                        // This will throw if path is unsafe
+                        prog.stdout_logfile = security::validate_log_path(*prog.stdout_logfile);
+                    } catch (const security::SecurityError& e) {
+                        throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
+                    }
+                }
 
                 config.programs.push_back(std::move(prog));
             }

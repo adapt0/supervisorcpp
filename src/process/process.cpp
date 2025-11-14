@@ -1,9 +1,11 @@
 #include "process.h"
 #include "logger.h"
+#include "security.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <fcntl.h>
 #include <pwd.h>
 #include <grp.h>
@@ -365,6 +367,9 @@ void Process::setup_child_process() {
     signal(SIGTERM, SIG_DFL);
     signal(SIGINT, SIG_DFL);
 
+    // SECURITY: Set resource limits before dropping privileges
+    security::set_child_resource_limits();
+
     // Setup working directory
     if (!setup_working_directory()) {
         LOG_ERROR << "Failed to setup working directory";
@@ -431,6 +436,14 @@ bool Process::switch_user() {
     // Set user ID
     if (setuid(pwd->pw_uid) < 0) {
         LOG_ERROR << "setuid failed: " << strerror(errno);
+        return false;
+    }
+
+    // SECURITY: Verify privilege drop was successful
+    try {
+        security::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
+    } catch (const security::SecurityError& e) {
+        LOG_ERROR << "Privilege drop verification failed: " << e.what();
         return false;
     }
 

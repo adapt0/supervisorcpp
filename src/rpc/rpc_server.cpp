@@ -1,5 +1,6 @@
 #include "rpc_server.h"
 #include "logger.h"
+#include "security.h"
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <sstream>
@@ -43,8 +44,13 @@ void RpcServer::start() {
     acceptor_.bind(endpoint);
     acceptor_.listen();
 
-    // Set socket permissions (chmod 0700)
-    ::chmod(socket_path_.c_str(), S_IRUSR | S_IWUSR | S_IXUSR);
+    // SECURITY: Set socket permissions to 0600 (owner read/write only)
+    try {
+        security::set_socket_permissions(socket_path_);
+    } catch (const security::SecurityError& e) {
+        LOG_ERROR << "Failed to set socket permissions: " << e.what();
+        throw;
+    }
 
     running_ = true;
     LOG_INFO << "RPC server listening on " << socket_path_;

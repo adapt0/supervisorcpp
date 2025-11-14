@@ -204,8 +204,8 @@ serverurl=unix:///tmp/test.sock
 command=)" + long_command;
 
     TempConfigFile temp(content);
-    auto config = ConfigParser::parse_file(temp.path());
-    BOOST_CHECK_EQUAL(config.programs[0].command.length(), 10000);
+    // Command must be absolute path - this should fail validation
+    BOOST_CHECK_THROW(ConfigParser::parse_file(temp.path()), ConfigParseError);
 }
 
 // Test 10: Special characters in values

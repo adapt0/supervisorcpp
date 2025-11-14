@@ -24,7 +24,7 @@ childlogdir=/var/log/supervisor
 serverurl=unix:///run/supervisord.sock
 
 [program:test_app]
-command=/usr/bin/test_app
+command=/bin/echo test_app
 )";
 
     Configuration config = ConfigParser::parse_string(config_str);
@@ -44,7 +44,7 @@ command=/usr/bin/test_app
     // Check program
     BOOST_CHECK_EQUAL(config.programs.size(), 1);
     BOOST_CHECK_EQUAL(config.programs[0].name, "test_app");
-    BOOST_CHECK_EQUAL(config.programs[0].command, "/usr/bin/test_app");
+    BOOST_CHECK_EQUAL(config.programs[0].command, "/bin/echo test_app");
 }
 
 BOOST_AUTO_TEST_CASE(TestParseProgramConfig) {
@@ -53,11 +53,11 @@ BOOST_AUTO_TEST_CASE(TestParseProgramConfig) {
 file=/run/supervisord.sock
 
 [program:my_app]
-command=/opt/apps/bin/my_app
+command=/bin/sleep 60
 environment=LD_LIBRARY_PATH=/opt/apps/lib,DEBUG=1
-directory=/opt/apps
+directory=/tmp
 autorestart=true
-user=appuser
+user=root
 stdout_logfile=/var/log/%(program_name)s.log
 stdout_logfile_maxbytes=10MB
 redirect_stderr=true
@@ -73,10 +73,10 @@ stopsignal=INT
     const auto& prog = config.programs[0];
 
     BOOST_CHECK_EQUAL(prog.name, "my_app");
-    BOOST_CHECK_EQUAL(prog.command, "/opt/apps/bin/my_app");
-    BOOST_CHECK_EQUAL(prog.directory.value().string(), "/opt/apps");
+    BOOST_CHECK_EQUAL(prog.command, "/bin/sleep 60");
+    BOOST_CHECK_EQUAL(prog.directory.value().string(), "/tmp");
     BOOST_CHECK_EQUAL(prog.autorestart, true);
-    BOOST_CHECK_EQUAL(prog.user, "appuser");
+    BOOST_CHECK_EQUAL(prog.user, "root");
 
     // Check variable substitution
     BOOST_CHECK_EQUAL(prog.stdout_logfile.value().string(), "/var/log/my_app.log");
@@ -91,8 +91,8 @@ stopsignal=INT
     BOOST_CHECK_EQUAL(prog.stopsignal, "INT");
 
     // Check environment parsing
-    BOOST_CHECK_EQUAL(prog.environment.size(), 2);
-    BOOST_CHECK_EQUAL(prog.environment.at("LD_LIBRARY_PATH"), "/opt/apps/lib");
+    // NOTE: LD_LIBRARY_PATH is filtered by security sanitization
+    BOOST_CHECK_EQUAL(prog.environment.size(), 1);
     BOOST_CHECK_EQUAL(prog.environment.at("DEBUG"), "1");
 }
 
@@ -102,13 +102,13 @@ BOOST_AUTO_TEST_CASE(TestParseMultiplePrograms) {
 file=/run/supervisord.sock
 
 [program:app1]
-command=/usr/bin/app1
+command=/bin/echo app1
 
 [program:app2]
-command=/usr/bin/app2
+command=/bin/echo app2
 
 [program:app3]
-command=/usr/bin/app3
+command=/bin/echo app3
 )";
 
     Configuration config = ConfigParser::parse_string(config_str);
@@ -135,7 +135,8 @@ BOOST_AUTO_TEST_CASE(TestParseLogLevel) {
     BOOST_CHECK(parse_log_level("error") == LogLevel::ERROR);
     BOOST_CHECK(parse_log_level("DEBUG") == LogLevel::DEBUG);
     BOOST_CHECK(parse_log_level("INFO") == LogLevel::INFO);
-    BOOST_CHECK(parse_log_level("invalid") == LogLevel::INFO); // default
+    // Invalid log level now throws exception instead of defaulting
+    BOOST_CHECK_THROW(parse_log_level("invalid"), std::invalid_argument);
 }
 
 BOOST_AUTO_TEST_CASE(TestVariableSubstitution) {
@@ -214,7 +215,7 @@ BOOST_AUTO_TEST_CASE(TestParseActualFile) {
         const auto& prog = config.programs[0];
 
         BOOST_CHECK_EQUAL(prog.name, "test_app");
-        BOOST_CHECK_EQUAL(prog.command, "/usr/bin/test_app");
+        BOOST_CHECK_EQUAL(prog.command, "/bin/echo test_app");
         BOOST_CHECK_EQUAL(prog.environment.at("FOO"), "bar");
         BOOST_CHECK_EQUAL(prog.environment.at("BAZ"), "qux");
         BOOST_CHECK_EQUAL(prog.stdout_logfile.value().string(), "/tmp/test_app.log");
