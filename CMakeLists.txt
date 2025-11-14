@@ -98,10 +98,21 @@ target_link_libraries(xmlrpc_parser_test
     pthread
 )
 
+# Integration tests
+add_executable(integration_test
+    tests/integration/integration_test.cpp
+)
+target_link_libraries(integration_test
+    supervisord_lib
+    ${Boost_LIBRARIES}
+    pthread
+)
+
 # Register tests with CTest
 add_test(NAME ConfigParserTest COMMAND config_test)
 add_test(NAME ParserRobustnessTest COMMAND parser_robustness_test)
 add_test(NAME XmlRpcParserTest COMMAND xmlrpc_parser_test)
+add_test(NAME IntegrationTest COMMAND integration_test)
 
 # Install targets
 install(TARGETS supervisord supervisorctl
