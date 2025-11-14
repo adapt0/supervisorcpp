@@ -256,18 +256,22 @@ pid_t Process::spawn() {
     spawn_error_.clear();
 
     // Create pipes for stdout/stderr if logging is configured
+    // Use pipe2() with O_CLOEXEC for better security/robustness:
+    // - Parent's read end gets CLOEXEC set automatically
+    // - If parent ever exec()s (shouldn't happen), won't leak FDs
+    // - Child's write end will have CLOEXEC cleared by dup2()
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
 
     if (config_.stdout_logfile.has_value()) {
-        if (pipe(stdout_pipe) < 0) {
+        if (pipe2(stdout_pipe, O_CLOEXEC) < 0) {
             set_spawn_error("Failed to create stdout pipe: " + std::string(strerror(errno)));
             return -1;
         }
     }
 
     if (!config_.redirect_stderr && config_.stdout_logfile.has_value()) {
-        if (pipe(stderr_pipe) < 0) {
+        if (pipe2(stderr_pipe, O_CLOEXEC) < 0) {
             set_spawn_error("Failed to create stderr pipe: " + std::string(strerror(errno)));
             if (stdout_pipe[0] >= 0) {
                 close(stdout_pipe[0]);
@@ -332,8 +336,9 @@ pid_t Process::spawn() {
     // Setup async reading from stdout pipe
     if (stdout_pipe[0] >= 0 && log_writer_) {
         try {
-            // Set non-blocking
-            fcntl(stdout_pipe[0], F_SETFL, O_NONBLOCK);
+            // Set non-blocking (preserve existing flags)
+            int flags = fcntl(stdout_pipe[0], F_GETFL, 0);
+            fcntl(stdout_pipe[0], F_SETFL, flags | O_NONBLOCK);
 
             // Create stream descriptor for async reading
             stdout_stream_ = std::make_unique<boost::asio::posix::stream_descriptor>(
