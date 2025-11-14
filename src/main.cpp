@@ -1,6 +1,7 @@
 #include "config_parser.h"
 #include "logger.h"
 #include "process_manager.h"
+#include "rpc_server.h"
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <iostream>
@@ -79,6 +80,11 @@ int main(int argc, char* argv[]) {
         // Ignore SIGPIPE
         std::signal(SIGPIPE, SIG_IGN);
 
+        // Create and start RPC server
+        LOG_INFO << "Starting RPC server";
+        rpc::RpcServer rpc_server(io_context, config.unix_http_server.socket_file.string(), process_manager);
+        rpc_server.start();
+
         // Start all processes
         LOG_INFO << "Starting all configured processes";
         process_manager.start_all();
@@ -90,6 +96,9 @@ int main(int argc, char* argv[]) {
         // Run event loop
         LOG_INFO << "Main event loop starting";
         io_context.run();
+
+        // Stop RPC server
+        rpc_server.stop();
 
         LOG_INFO << "supervisord shutting down";
         util::shutdown_logging();

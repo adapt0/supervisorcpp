@@ -36,6 +36,7 @@ set(SUPERVISORD_LIB_SOURCES
     src/process/process.cpp
     src/process/process_manager.cpp
     src/process/log_writer.cpp
+    src/rpc/rpc_server.cpp
 )
 
 # Create static library for easier testing

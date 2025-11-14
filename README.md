@@ -32,6 +32,20 @@ A minimal, embedded-friendly replacement for supervisord written in C++23, desig
 - [x] Configurable rotation size and backup count
 - [x] Clean rotation (log → log.1 → log.2, etc.)
 
+**Phase 4: RPC Interface** ✅ COMPLETE
+
+- [x] Unix domain socket server with Boost.Asio
+- [x] HTTP request/response handling
+- [x] XML-RPC protocol parsing and generation
+- [x] supervisor.getState() - get supervisord state
+- [x] supervisor.getAllProcessInfo() - get all process status
+- [x] supervisor.getProcessInfo(name) - get specific process status
+- [x] supervisor.startProcess(name) - start a process
+- [x] supervisor.stopProcess(name) - stop a process
+- [x] supervisor.startAllProcesses() - start all processes
+- [x] supervisor.stopAllProcesses() - stop all processes
+- [x] supervisor.shutdown() - shutdown supervisord
+
 ## Features
 
 - **Lightweight**: Minimal binary size and memory footprint
@@ -128,7 +142,7 @@ redirect_stderr=true
 
 ## Development Status
 
-### Completed (Phases 1-3)
+### Completed (Phases 1-4)
 - ✅ Configuration parsing (INI format with includes)
 - ✅ Configuration validation
 - ✅ Logging framework (Boost.Log)
@@ -144,10 +158,13 @@ redirect_stderr=true
 - ✅ Async stdout/stderr capture with pipes
 - ✅ Line-buffered log file writing
 - ✅ Size-based log rotation on line boundaries
+- ✅ Unix domain socket RPC server
+- ✅ XML-RPC protocol handling
+- ✅ Complete supervisor RPC API
 
 ### Upcoming Phases
 
-**Phase 4**: RPC Interface
+**Phase 5**: supervisorctl Client
 - Unix socket server
 - XML-RPC protocol
 - Remote control methods
