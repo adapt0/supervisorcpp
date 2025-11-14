@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE ParserRobustnessTest
 #include <boost/test/unit_test.hpp>
-#include "config_parser.h"
+#include "config/config_parser.h"
 #include <filesystem>
 #include <fstream>
 

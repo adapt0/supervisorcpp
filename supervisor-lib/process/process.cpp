@@ -1,6 +1,6 @@
 #include "process.h"
-#include "logger.h"
-#include "security.h"
+#include "../util/logger.h"
+#include "../security.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>

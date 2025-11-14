@@ -1,6 +1,6 @@
 #include "rpc_server.h"
-#include "logger.h"
-#include "security.h"
+#include "../util/logger.h"
+#include "../security.h"
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <sstream>

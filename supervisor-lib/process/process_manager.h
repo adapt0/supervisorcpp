@@ -1,7 +1,7 @@
 #pragma once
 
 #include "process.h"
-#include "config_types.h"
+#include "../config/config_types.h"
 #include <boost/asio.hpp>
 #include <memory>
 #include <vector>

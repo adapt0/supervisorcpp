@@ -24,7 +24,6 @@ find_package(Boost 1.75 REQUIRED COMPONENTS
 
 # Include directories
 include_directories(
-    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/supervisor-lib
     ${CMAKE_SOURCE_DIR}/supervisor-app
     ${Boost_INCLUDE_DIRS}

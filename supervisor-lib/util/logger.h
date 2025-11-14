@@ -1,6 +1,6 @@
 #pragma once
 
-#include "config_types.h"
+#include "../config/config_types.h"
 #include <boost/log/trivial.hpp>
 #include <boost/log/sources/severity_logger.hpp>
 #include <boost/log/sources/global_logger_storage.hpp>

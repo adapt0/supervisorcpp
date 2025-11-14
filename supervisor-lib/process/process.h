@@ -1,6 +1,6 @@
 #pragma once
 
-#include "config_types.h"
+#include "../config/config_types.h"
 #include "log_writer.h"
 #include <boost/asio.hpp>
 #include <sys/types.h>

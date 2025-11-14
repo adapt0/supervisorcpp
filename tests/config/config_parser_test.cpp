@@ -1,6 +1,6 @@
 #define BOOST_TEST_MODULE ConfigParserTest
 #include <boost/test/included/unit_test.hpp>
-#include "config_parser.h"
+#include "config/config_parser.h"
 #include <fstream>
 #include <filesystem>
 

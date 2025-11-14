@@ -1,7 +1,7 @@
-#include "config_parser.h"
-#include "logger.h"
-#include "process_manager.h"
-#include "rpc_server.h"
+#include "config/config_parser.h"
+#include "util/logger.h"
+#include "process/process_manager.h"
+#include "rpc/rpc_server.h"
 #include <boost/program_options.hpp>
 #include <boost/asio.hpp>
 #include <iostream>

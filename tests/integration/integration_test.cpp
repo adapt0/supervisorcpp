@@ -12,10 +12,10 @@
 
 #define BOOST_TEST_MODULE IntegrationTest
 #include <boost/test/unit_test.hpp>
-#include "config_parser.h"
-#include "process_manager.h"
-#include "rpc_server.h"
-#include "logger.h"
+#include "config/config_parser.h"
+#include "process/process_manager.h"
+#include "rpc/rpc_server.h"
+#include "util/logger.h"
 #include <boost/asio.hpp>
 #include <filesystem>
 #include <fstream>
