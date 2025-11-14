@@ -1,6 +1,6 @@
 #include "process.h"
 #include "../util/logger.h"
-#include "../security.h"
+#include "setup.h"
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -375,10 +375,10 @@ void Process::setup_child_process() {
     // SECURITY: Close all inherited file descriptors (except stdin/stdout/stderr)
     // This prevents child from accessing parent's sockets, log files, etc.
     // Must be called AFTER stdio redirection in spawn()
-    security::close_inherited_fds();
+    process::close_inherited_fds();
 
     // SECURITY: Set resource limits before dropping privileges
-    security::set_child_resource_limits();
+    process::set_child_resource_limits();
 
     // Setup working directory
     if (!setup_working_directory()) {
@@ -451,8 +451,8 @@ bool Process::switch_user() {
 
     // SECURITY: Verify privilege drop was successful
     try {
-        security::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
-    } catch (const security::SecurityError& e) {
+        process::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
+    } catch (const SecurityError& e) {
         LOG_ERROR << "Privilege drop verification failed: " << e.what();
         return false;
     }

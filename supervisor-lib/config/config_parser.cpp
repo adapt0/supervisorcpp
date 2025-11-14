@@ -1,5 +1,5 @@
 #include "config_parser.h"
-#include "../security.h"
+#include "validation.h"
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <sstream>
@@ -19,8 +19,8 @@ Configuration ConfigParser::parse_file(const fs::path& config_file) {
 
     // SECURITY: Validate config file ownership and permissions
     try {
-        security::validate_config_file_security(config_file);
-    } catch (const security::SecurityError& e) {
+        config::validate_config_file_security(config_file);
+    } catch (const SecurityError& e) {
         throw ConfigParseError("Security validation failed: " + std::string(e.what()));
     }
 
@@ -92,7 +92,7 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
                 if (auto env = value.get_optional<std::string>("environment")) {
                     auto parsed_env = parse_environment(*env);
                     // SECURITY: Sanitize environment variables
-                    prog.environment = security::sanitize_environment(parsed_env);
+                    prog.environment = config::sanitize_environment(parsed_env);
                 }
 
                 // Optional: directory
@@ -163,8 +163,8 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
 
                 // SECURITY: Validate command path is absolute and safe
                 try {
-                    security::validate_command_path(prog.command);
-                } catch (const security::SecurityError& e) {
+                    config::validate_command_path(prog.command);
+                } catch (const SecurityError& e) {
                     throw ConfigParseError("Program [" + key + "]: " + e.what());
                 }
 
@@ -172,8 +172,8 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
                 if (prog.stdout_logfile) {
                     try {
                         // This will throw if path is unsafe
-                        prog.stdout_logfile = security::validate_log_path(*prog.stdout_logfile);
-                    } catch (const security::SecurityError& e) {
+                        prog.stdout_logfile = config::validate_log_path(*prog.stdout_logfile);
+                    } catch (const SecurityError& e) {
                         throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
                     }
                 }
@@ -267,7 +267,7 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
                 if (auto env = value.get_optional<std::string>("environment")) {
                     auto parsed_env = parse_environment(*env);
                     // SECURITY: Sanitize environment variables
-                    prog.environment = security::sanitize_environment(parsed_env);
+                    prog.environment = config::sanitize_environment(parsed_env);
                 }
 
                 // Optional: directory
@@ -338,8 +338,8 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
 
                 // SECURITY: Validate command path is absolute and safe
                 try {
-                    security::validate_command_path(prog.command);
-                } catch (const security::SecurityError& e) {
+                    config::validate_command_path(prog.command);
+                } catch (const SecurityError& e) {
                     throw ConfigParseError("Program [" + key + "]: " + e.what());
                 }
 
@@ -347,8 +347,8 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
                 if (prog.stdout_logfile) {
                     try {
                         // This will throw if path is unsafe
-                        prog.stdout_logfile = security::validate_log_path(*prog.stdout_logfile);
-                    } catch (const security::SecurityError& e) {
+                        prog.stdout_logfile = config::validate_log_path(*prog.stdout_logfile);
+                    } catch (const SecurityError& e) {
                         throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
                     }
                 }

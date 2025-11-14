@@ -1,6 +1,6 @@
 #include "rpc_server.h"
 #include "../util/logger.h"
-#include "../security.h"
+#include "socket_util.h"
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <sstream>
@@ -46,8 +46,8 @@ void RpcServer::start() {
 
     // SECURITY: Set socket permissions to 0600 (owner read/write only)
     try {
-        security::set_socket_permissions(socket_path_);
-    } catch (const security::SecurityError& e) {
+        rpc::set_socket_permissions(socket_path_);
+    } catch (const SecurityError& e) {
         LOG_ERROR << "Failed to set socket permissions: " << e.what();
         throw;
     }
