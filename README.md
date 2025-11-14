@@ -12,6 +12,17 @@ A minimal, embedded-friendly replacement for supervisord written in C++23, desig
 - [x] Basic logging framework
 - [x] Unit tests for configuration
 
+**Phase 2: Process Management** ✅ COMPLETE
+
+- [x] Process spawning (fork/exec)
+- [x] User switching (setuid/setgid/initgroups)
+- [x] Environment and working directory setup
+- [x] Process state machine (STOPPED, STARTING, RUNNING, BACKOFF, FATAL, EXITED)
+- [x] SIGCHLD handling with Boost.Asio
+- [x] Event loop integration
+- [x] Autorestart logic with retry backoff
+- [x] Graceful shutdown (SIGTERM → SIGKILL)
+
 ## Features
 
 - **Lightweight**: Minimal binary size and memory footprint
@@ -108,24 +119,26 @@ redirect_stderr=true
 
 ## Development Status
 
-### Completed (Phase 1)
+### Completed (Phases 1-2)
 - ✅ Configuration parsing (INI format with includes)
 - ✅ Configuration validation
 - ✅ Logging framework (Boost.Log)
 - ✅ Unit tests
 - ✅ Basic command-line interface
+- ✅ Process spawning and monitoring
+- ✅ User switching (setuid/setgid/initgroups)
+- ✅ SIGCHLD signal handling
+- ✅ Process state machine (STOPPED, STARTING, RUNNING, BACKOFF, FATAL, EXITED)
+- ✅ Autorestart logic with retry backoff
+- ✅ Graceful shutdown (SIGTERM → SIGKILL)
+- ✅ Boost.Asio event loop
 
 ### Upcoming Phases
 
-**Phase 2**: Process Management
-- Process spawning and monitoring
-- User switching (setuid/setgid)
-- Signal handling
-
 **Phase 3**: Lifecycle & Logging
-- Process state machine (STARTING, RUNNING, BACKOFF, FATAL)
-- Autorestart logic
-- Log capture and rotation
+- Log capture (stdout/stderr pipes)
+- Log file writing
+- Size-based log rotation
 
 **Phase 4**: RPC Interface
 - Unix socket server

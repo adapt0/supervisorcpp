@@ -33,6 +33,8 @@ include_directories(
 set(SUPERVISORD_LIB_SOURCES
     src/config/config_parser.cpp
     src/util/logger.cpp
+    src/process/process.cpp
+    src/process/process_manager.cpp
 )
 
 # Create static library for easier testing

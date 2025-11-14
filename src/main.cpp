@@ -1,30 +1,13 @@
 #include "config_parser.h"
 #include "logger.h"
+#include "process_manager.h"
 #include <boost/program_options.hpp>
+#include <boost/asio.hpp>
 #include <iostream>
 #include <csignal>
-#include <atomic>
-#include <thread>
-#include <chrono>
 
 namespace po = boost::program_options;
 using namespace supervisord;
-
-// Global flag for graceful shutdown
-std::atomic<bool> g_running{true};
-
-void signal_handler(int signal) {
-    if (signal == SIGTERM || signal == SIGINT) {
-        LOG_INFO << "Received shutdown signal (" << signal << ")";
-        g_running = false;
-    }
-}
-
-void setup_signal_handlers() {
-    std::signal(SIGTERM, signal_handler);
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
-}
 
 int main(int argc, char* argv[]) {
     try {
@@ -72,20 +55,41 @@ int main(int argc, char* argv[]) {
             LOG_INFO << "  - " << prog.name << ": " << prog.command;
         }
 
-        // Setup signal handlers
-        setup_signal_handlers();
+        // Create IO context for async operations
+        boost::asio::io_context io_context;
 
-        // Main loop (placeholder for Phase 2)
-        LOG_INFO << "Main event loop starting (placeholder - Phase 1 complete)";
+        // Create process manager
+        process::ProcessManager process_manager(io_context);
+
+        // Add all configured processes
+        for (const auto& prog : config.programs) {
+            process_manager.add_process(prog);
+        }
+
+        // Setup signal handlers for SIGTERM and SIGINT
+        boost::asio::signal_set signals(io_context, SIGTERM, SIGINT);
+        signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
+            if (!error) {
+                LOG_INFO << "Received shutdown signal (" << signal_number << ")";
+                process_manager.stop_all();
+                io_context.stop();
+            }
+        });
+
+        // Ignore SIGPIPE
+        std::signal(SIGPIPE, SIG_IGN);
+
+        // Start all processes
+        LOG_INFO << "Starting all configured processes";
+        process_manager.start_all();
 
         if (nodaemon) {
             std::cout << "supervisord started successfully (press Ctrl+C to stop)" << std::endl;
         }
 
-        // Simple loop for now
-        while (g_running) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
+        // Run event loop
+        LOG_INFO << "Main event loop starting";
+        io_context.run();
 
         LOG_INFO << "supervisord shutting down";
         util::shutdown_logging();
