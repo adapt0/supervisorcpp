@@ -186,18 +186,21 @@ program_name    RUNNING   pid 12345, uptime 0:01:23
 
 ### 3.2 Technology Stack
 
-- **Language**: C++17 or later
+- **Language**: C++23
+- **C Library**: musl (Alpine Linux)
 - **Build System**: CMake
 - **Core Libraries**:
   - Standard Library (filesystem, threads, chrono, etc.)
-  - Boost (optional: program_options, property_tree for INI parsing)
-- **RPC**: Lightweight XML-RPC library or minimal custom implementation
-- **Logging**: Custom or simple logging library (spdlog as option)
-- **Event Loop**: epoll (Linux) for monitoring process events and socket I/O
+  - **Boost.PropertyTree**: INI configuration parsing and XML-RPC serialization
+  - **Boost.Log**: Logging framework with built-in rotation support
+  - **Boost.Asio**: Event loop, async I/O, Unix domain socket server
+  - **Boost.Process**: Process spawning utilities (supplemented with raw fork/exec for setuid/setgid)
+  - **Boost.Test**: Unit testing framework
+- **Process Management**: Manual fork/exec for fine-grained control (user switching, file descriptors)
 
 ### 3.3 Process Monitoring
 
-Use `waitpid()` with WNOHANG in event loop to detect process exits without blocking. Signal handling for SIGCHLD to wake event loop.
+Use Boost.Asio signal handling for SIGCHLD to detect process exits asynchronously. Supplement with `waitpid()` with WNOHANG to reap zombie processes and determine exit status.
 
 ### 3.4 User Switching
 
@@ -205,10 +208,11 @@ Use `setuid()`, `setgid()`, and `initgroups()` to drop privileges per-process. S
 
 ### 3.5 Log Rotation
 
-Monitor log file size before each write. When exceeding `stdout_logfile_maxbytes`:
-1. Rotate existing logs (.log -> .log.1, .log.1 -> .log.2, etc.)
-2. Start new log file
-3. Only rotate on line boundaries (after '\n')
+Use Boost.Log's rotation capabilities configured for size-based rotation:
+1. Set rotation size based on `stdout_logfile_maxbytes`
+2. Rotate on line boundaries (text sink with auto-flush)
+3. Archive rotated logs with numbered suffixes (.log.1, .log.2, etc.)
+4. Limit number of archived logs (default: 10)
 
 ## 4. Implementation Phases
 
