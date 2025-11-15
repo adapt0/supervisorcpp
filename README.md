@@ -82,6 +82,48 @@ ctest --output-on-failure
 sudo make install
 ```
 
+### Binary Architecture
+
+supervisorcpp uses a **busybox-style multi-call binary** approach:
+
+- **Single binary**: `supervisor` (2.8 MB)
+- **Symlinks**: `supervisord` → `supervisor`, `supervisorctl` → `supervisor`
+- **Mode selection**: Based on `argv[0]` (symlink name) or explicit `supervisor ctl` command
+
+This design:
+- ✅ Reduces installed footprint (~50% smaller than separate binaries)
+- ✅ Follows Alpine Linux philosophy (matches busybox pattern)
+- ✅ Simplifies distribution and installation
+- ✅ Easy to extend with new modes (e.g., `supervisorstat`)
+
+**Usage modes**:
+```bash
+# As daemon (default)
+supervisor -c /etc/supervisord.conf
+./supervisord -c /etc/supervisord.conf  # Via symlink
+
+# As controller
+supervisor ctl status                    # Explicit mode
+./supervisorctl status                   # Via symlink
+```
+
+### Directory Structure
+
+```
+supervisor-lib/              # Library code (headers + implementation)
+  config/                    # Configuration parsing & validation
+  process/                   # Process management & setup
+  rpc/                       # XML-RPC server & utilities
+  util/                      # Common utilities & errors
+
+supervisor-app/              # Application entry points
+  main.cpp                   # Unified entry point (argv[0] dispatch)
+  supervisord.cpp            # Daemon mode implementation
+  supervisorctl.cpp          # Controller mode implementation
+
+tests/                       # Test suites (64 tests)
+```
+
 ## Configuration
 
 ### Basic Configuration File
