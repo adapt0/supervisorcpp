@@ -71,15 +71,8 @@ int main(int argc, char* argv[]) {
 
 ### 2. Modern C++ Directory Structure
 
-**Decision**: Headers alongside implementation, organized by component.
+**Organization**: Headers alongside implementation, organized by component.
 
-**Before** (traditional):
-```
-include/        # All headers in flat directory
-src/            # All implementation
-```
-
-**After** (modern):
 ```
 supervisor-lib/
   config/
@@ -100,24 +93,24 @@ supervisor-lib/
     path.h
 ```
 
-**Rationale**:
+**Benefits**:
 - Easier navigation (headers with implementation)
 - Self-documenting (directory structure shows components)
 - Better component isolation
 - Matches industry best practices (LLVM, Google, etc.)
 
-### 3. Security by Functional Area
+### 3. Security Organization
 
-**Decision**: Refactor monolithic security.h into focused, component-specific headers.
+**Structure**: Security functionality organized by functional area in component-specific headers.
 
-**Split**:
+**Components**:
 - `util/errors.h` - SecurityError exception
 - `util/path.h` - Path canonicalization
 - `config/validation.h` - Config/environment/command validation
 - `process/setup.h` - Process setup, privilege management, resource limits
 - `rpc/socket_util.h` - Socket permissions
 
-**Rationale**:
+**Benefits**:
 - Clear separation of concerns
 - Components only include what they need
 - Self-documenting (header name indicates purpose)
@@ -419,31 +412,34 @@ STOPPED (0) ─start→ STARTING (10) ─success→ RUNNING (20)
    )
    ```
 
-## Lessons Learned
+## Design Principles
 
-### 1. Header Organization Matters
+### 1. Component-Based Architecture
 
-Moving from flat `include/` to component-based headers made the codebase significantly more maintainable. Developers can now find related code easily.
+The codebase uses a component-based structure where headers live alongside implementation. This makes navigation intuitive and helps developers find related code quickly.
 
-### 2. Separation of Concerns is Critical
+### 2. Separation of Concerns
 
-Splitting `security.h` by functional area made dependencies clearer and reduced coupling. Each component now includes only what it needs.
+Security functionality is distributed across functional areas. Each component includes only what it needs, reducing coupling and making dependencies clear.
 
-### 3. Busybox Pattern Works Well
+### 3. Busybox Pattern
 
-The multi-call binary approach simplified distribution and matched Alpine's philosophy. It's also easier to extend with new modes.
+The multi-call binary approach simplifies distribution and matches Alpine's philosophy. It's easy to extend with new modes by adding entry points.
 
-### 4. Defense in Depth for Security
+### 4. Defense in Depth
 
-Layering multiple security mechanisms (O_CLOEXEC + close_inherited_fds(), config validation + path canonicalization) provides robust protection.
+Multiple security layers provide robust protection:
+- O_CLOEXEC + close_inherited_fds() for FD isolation
+- Config validation + path canonicalization for file safety
+- Environment sanitization + resource limits for child processes
 
-### 5. Test Async Behavior Carefully
+### 5. Async-First Design
 
-Integration tests needed to account for async state transitions (STOPPING vs STOPPED). Timing-dependent tests require flexibility.
+The event-driven architecture using Boost.Asio enables single-threaded, non-blocking operation. Tests must account for async state transitions and timing-dependent behavior.
 
-### 6. Modern C++ Simplifies Code
+### 6. Modern C++ Features
 
-C++23 features like `std::filesystem`, structured bindings, and concepts made the code cleaner and safer.
+C++23 features (`std::filesystem`, structured bindings, concepts) provide cleaner, safer code without runtime overhead.
 
 ## Dependencies
 
