@@ -7,10 +7,12 @@
 namespace supervisord {
 namespace process {
 
-ProcessManager::ProcessManager(boost::asio::io_context& io_context)
+ProcessManager::ProcessManager(boost::asio::io_context& io_context,
+                               std::chrono::milliseconds update_interval)
     : io_context_(io_context)
     , signals_(io_context, SIGCHLD)
     , timer_(io_context)
+    , update_interval_(update_interval)
 {
     LOG_INFO << "ProcessManager initialized";
     setup_signal_handler();
@@ -43,18 +45,36 @@ void ProcessManager::start_all() {
 void ProcessManager::stop_all() {
     LOG_INFO << "Stopping all processes";
 
+    // Send stop signal to all processes with active PIDs (RUNNING, STARTING, etc.)
+    bool any_signaled = false;
     for (auto& process : processes_) {
-        if (process->is_running()) {
+        if (process->pid() > 0) {
             process->stop();
+            any_signaled = true;
         }
     }
 
-    // Wait a bit for graceful shutdown
-    // In a real implementation, we'd wait for processes to actually exit
-    // For now, we'll just give them a moment
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    if (!any_signaled) return;
 
-    // Kill any remaining processes
+    // Actively reap children instead of blocking sleep
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    while (has_running_processes() && std::chrono::steady_clock::now() < deadline) {
+        int status;
+        pid_t pid = waitpid(-1, &status, WNOHANG);
+        if (pid > 0) {
+            LOG_DEBUG << "Reaped child process " << pid << ", status=" << status;
+            for (auto& process : processes_) {
+                if (process->pid() == pid) {
+                    process->on_exit(status);
+                    break;
+                }
+            }
+        } else {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    // Force kill any remaining processes
     for (auto& process : processes_) {
         if (process->pid() > 0) {
             LOG_WARN << "Force killing process '" << process->name() << "'";
@@ -92,14 +112,22 @@ bool ProcessManager::restart_process(const std::string& name) {
 
     Process* proc = it->second;
 
-    if (proc->is_running()) {
+    if (proc->pid() > 0) {
         if (!proc->stop()) {
             return false;
         }
 
-        // Wait for process to actually stop
-        // In production, this should be handled asynchronously
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Actively reap until stopped or timeout
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+        while (proc->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
+            int status;
+            pid_t pid = waitpid(proc->pid(), &status, WNOHANG);
+            if (pid > 0) {
+                proc->on_exit(status);
+            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
     }
 
     return proc->start();
@@ -162,7 +190,7 @@ void ProcessManager::handle_sigchld() {
 }
 
 void ProcessManager::setup_update_timer() {
-    timer_.expires_after(std::chrono::seconds(1));
+    timer_.expires_after(update_interval_);
     timer_.async_wait([this](const boost::system::error_code& error) {
         if (!error) {
             on_timer();

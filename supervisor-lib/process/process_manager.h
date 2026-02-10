@@ -16,7 +16,8 @@ namespace process {
  */
 class ProcessManager {
 public:
-    explicit ProcessManager(boost::asio::io_context& io_context);
+    explicit ProcessManager(boost::asio::io_context& io_context,
+                            std::chrono::milliseconds update_interval = std::chrono::seconds(1));
     ~ProcessManager();
 
     // Disable copy and move
@@ -116,6 +117,9 @@ private:
 
     // Map for quick lookup by name
     std::map<std::string, Process*> process_map_;
+
+    // Update timer interval
+    std::chrono::milliseconds update_interval_;
 };
 
 } // namespace process
