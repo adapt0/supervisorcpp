@@ -202,7 +202,8 @@ BOOST_AUTO_TEST_CASE(TestParseFileNotFound) {
 
 BOOST_AUTO_TEST_CASE(TestParseActualFile) {
     // This test requires the test data file to exist
-    fs::path test_file = fs::path(__FILE__).parent_path().parent_path() / "data" / "test_config.ini";
+    auto exe_dir = fs::canonical(boost::unit_test::framework::master_test_suite().argv[0]).parent_path();
+    fs::path test_file = exe_dir / "tests" / "data" / "test_config.ini";
 
     if (fs::exists(test_file)) {
         Configuration config = ConfigParser::parse_file(test_file);

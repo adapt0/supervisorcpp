@@ -69,6 +69,9 @@ add_custom_command(TARGET supervisor POST_BUILD
 # Enable testing
 enable_testing()
 
+# Copy test data to build directory (fixes ownership for root-owned validation)
+file(COPY tests/data DESTINATION ${CMAKE_BINARY_DIR}/tests)
+
 # Unit tests
 add_executable(config_test
     tests/config/config_parser_test.cpp
