@@ -11,7 +11,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
-# Find Boost (uses upstream BoostConfig.cmake per CMP0167)
+# Find Boost (static link libs to reduce target burden)
+set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost 1.84 REQUIRED COMPONENTS
     log
     log_setup
@@ -22,8 +23,8 @@ find_package(Boost 1.84 REQUIRED COMPONENTS
     unit_test_framework
 )
 
-# Source files for libsupervisord (library code only)
-set(SUPERVISORD_LIB_SOURCES
+# Create static library for easier testing
+add_library(supervisord_lib STATIC 
     supervisor-lib/config/config_parser.cpp
     supervisor-lib/util/logger.cpp
     supervisor-lib/process/process.cpp
@@ -31,12 +32,8 @@ set(SUPERVISORD_LIB_SOURCES
     supervisor-lib/process/log_writer.cpp
     supervisor-lib/rpc/rpc_server.cpp
 )
-
-# Create static library for easier testing
-add_library(supervisord_lib STATIC ${SUPERVISORD_LIB_SOURCES})
 target_include_directories(supervisord_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/supervisor-lib
-    ${CMAKE_SOURCE_DIR}/supervisor-app
 )
 target_link_libraries(supervisord_lib PUBLIC
     Boost::log
@@ -94,10 +91,8 @@ target_link_libraries(parser_robustness_test PRIVATE
 add_executable(xmlrpc_parser_test
     tests/rpc/xmlrpc_parser_test.cpp
 )
-target_include_directories(xmlrpc_parser_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/supervisor-lib
-)
 target_link_libraries(xmlrpc_parser_test PRIVATE
+    supervisord_lib
     Boost::unit_test_framework
     Boost::headers
 )
