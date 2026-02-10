@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.30)
 project(supervisorcpp VERSION 0.1.0 LANGUAGES CXX)
 
 # C++23 standard
@@ -11,8 +11,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
-# Find Boost
-find_package(Boost 1.75 REQUIRED COMPONENTS
+# Find Boost (uses upstream BoostConfig.cmake per CMP0167)
+find_package(Boost 1.84 REQUIRED COMPONENTS
     log
     log_setup
     filesystem
@@ -20,13 +20,6 @@ find_package(Boost 1.75 REQUIRED COMPONENTS
     thread
     program_options
     unit_test_framework
-)
-
-# Include directories
-include_directories(
-    ${CMAKE_SOURCE_DIR}/supervisor-lib
-    ${CMAKE_SOURCE_DIR}/supervisor-app
-    ${Boost_INCLUDE_DIRS}
 )
 
 # Source files for libsupervisord (library code only)
@@ -41,8 +34,17 @@ set(SUPERVISORD_LIB_SOURCES
 
 # Create static library for easier testing
 add_library(supervisord_lib STATIC ${SUPERVISORD_LIB_SOURCES})
-target_link_libraries(supervisord_lib
-    ${Boost_LIBRARIES}
+target_include_directories(supervisord_lib PUBLIC
+    ${CMAKE_SOURCE_DIR}/supervisor-lib
+    ${CMAKE_SOURCE_DIR}/supervisor-app
+)
+target_link_libraries(supervisord_lib PUBLIC
+    Boost::log
+    Boost::log_setup
+    Boost::filesystem
+    Boost::system
+    Boost::thread
+    Boost::program_options
     pthread
 )
 
@@ -52,11 +54,7 @@ add_executable(supervisor
     supervisor-app/supervisord.cpp
     supervisor-app/supervisorctl.cpp
 )
-target_link_libraries(supervisor
-    supervisord_lib
-    ${Boost_LIBRARIES}
-    pthread
-)
+target_link_libraries(supervisor PRIVATE supervisord_lib)
 
 # Create symlinks in build directory for testing/development
 add_custom_command(TARGET supervisor POST_BUILD
@@ -75,39 +73,39 @@ enable_testing()
 add_executable(config_test
     tests/config/config_parser_test.cpp
 )
-target_link_libraries(config_test
+target_link_libraries(config_test PRIVATE
     supervisord_lib
-    ${Boost_LIBRARIES}
-    pthread
+    Boost::unit_test_framework
 )
 
 # Parser robustness tests
 add_executable(parser_robustness_test
     tests/config/parser_robustness_test.cpp
 )
-target_link_libraries(parser_robustness_test
+target_link_libraries(parser_robustness_test PRIVATE
     supervisord_lib
-    ${Boost_LIBRARIES}
-    pthread
+    Boost::unit_test_framework
 )
 
 # XML-RPC parser tests
 add_executable(xmlrpc_parser_test
     tests/rpc/xmlrpc_parser_test.cpp
 )
-target_link_libraries(xmlrpc_parser_test
-    ${Boost_LIBRARIES}
-    pthread
+target_include_directories(xmlrpc_parser_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/supervisor-lib
+)
+target_link_libraries(xmlrpc_parser_test PRIVATE
+    Boost::unit_test_framework
+    Boost::headers
 )
 
 # Integration tests
 add_executable(integration_test
     tests/integration/integration_test.cpp
 )
-target_link_libraries(integration_test
+target_link_libraries(integration_test PRIVATE
     supervisord_lib
-    ${Boost_LIBRARIES}
-    pthread
+    Boost::unit_test_framework
 )
 
 # Register tests with CTest
@@ -137,5 +135,4 @@ message(STATUS "  C++ Compiler:       ${CMAKE_CXX_COMPILER}")
 message(STATUS "  C++ Standard:       C++${CMAKE_CXX_STANDARD}")
 message(STATUS "  Build Type:         ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Boost Version:      ${Boost_VERSION}")
-message(STATUS "  Boost Libraries:    ${Boost_LIBRARIES}")
 message(STATUS "")
