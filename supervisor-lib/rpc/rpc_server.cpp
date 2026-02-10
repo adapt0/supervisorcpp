@@ -103,6 +103,20 @@ void RpcServer::register_handlers() {
     handlers_["supervisor.stopAllProcesses"] = [this](auto& p) { return handle_stop_all_processes(p); };
     handlers_["supervisor.restart"] = [this](auto& p) { return handle_restart_process(p); };
     handlers_["supervisor.shutdown"] = [this](auto& p) { return handle_shutdown(p); };
+
+    // Compatibility stubs for Python supervisorctl handshake
+    const auto apiVersion = [](const std::vector<std::string>&) -> std::string {
+        return "<string>3.0</string>";
+    };
+    handlers_["supervisor.getVersion"] = apiVersion;
+    handlers_["supervisor.getSupervisorVersion"] = apiVersion;
+    handlers_["supervisor.getAPIVersion"] = apiVersion;
+    handlers_["supervisor.getIdentification"] = [](auto&) -> std::string {
+        return "<string>supervisor</string>";
+    };
+    handlers_["supervisor.getPID"] = [](auto&) -> std::string {
+        return "<int>" + std::to_string(getpid()) + "</int>";
+    };
 }
 
 std::string RpcServer::dispatch_method(const std::string& method_name,
