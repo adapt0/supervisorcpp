@@ -32,28 +32,6 @@ inline void close_inherited_fds() {
 }
 
 /**
- * Set resource limits for child process
- */
-inline void set_child_resource_limits() {
-    struct rlimit rlim;
-
-    // Limit number of processes (prevent fork bombs)
-    rlim.rlim_cur = 100;  // Soft limit
-    rlim.rlim_max = 200;  // Hard limit
-    setrlimit(RLIMIT_NPROC, &rlim);
-
-    // Limit address space to 4GB (prevent memory exhaustion)
-    rlim.rlim_cur = 4UL * 1024 * 1024 * 1024;
-    rlim.rlim_max = 4UL * 1024 * 1024 * 1024;
-    setrlimit(RLIMIT_AS, &rlim);
-
-    // Limit core dump size to 0 (no core dumps)
-    rlim.rlim_cur = 0;
-    rlim.rlim_max = 0;
-    setrlimit(RLIMIT_CORE, &rlim);
-}
-
-/**
  * Verify privilege drop was successful
  * Checks that we're running as the target UID/GID
  */

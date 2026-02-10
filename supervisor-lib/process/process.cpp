@@ -377,9 +377,6 @@ void Process::setup_child_process() {
     // Must be called AFTER stdio redirection in spawn()
     process::close_inherited_fds();
 
-    // SECURITY: Set resource limits before dropping privileges
-    process::set_child_resource_limits();
-
     // Setup working directory
     if (!setup_working_directory()) {
         LOG_ERROR << "Failed to setup working directory";
