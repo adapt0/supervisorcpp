@@ -19,7 +19,7 @@ int supervisord_main(int argc, char* argv[]) {
             ("version,v", "Show version information")
             ("config,c", po::value<std::string>()->default_value("/etc/supervisord.conf"),
              "Configuration file path")
-            ("nodaemon,n", "Run in foreground (don't daemonize)")
+            ("nodaemon,n", "For compatibility - always runs in foreground")
         ;
 
         po::variables_map vm;

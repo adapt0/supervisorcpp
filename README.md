@@ -203,15 +203,15 @@ stdout_logfile=/var/log/%(program_name)s.log
 ### Running supervisord
 
 ```bash
-# Start supervisord
+# Start supervisord (always runs in foreground)
 supervisord -c /etc/supervisord.conf
 
-# Start in foreground (no daemon)
-supervisord -c /etc/supervisord.conf -n
-
-# Specify config file
-supervisord --configuration /path/to/config.ini
 ```
+
+> **Note:** Unlike Python supervisord, supervisorcpp does not daemonize. It always
+> runs in the foreground. Use your init system (OpenRC, systemd, etc.) to manage
+> it as a background service. The `-n`/`--nodaemon` flag is accepted for
+> configuration compatibility but is a no-op.
 
 ### Using supervisorctl
 
@@ -371,6 +371,7 @@ Optimizations for embedded environments:
 - Configuration validation
 
 ### Not Implemented (Minimal Version)
+- Daemonization (always runs in foreground; use your init system)
 - Process groups
 - Event listeners
 - Web UI
