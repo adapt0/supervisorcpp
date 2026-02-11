@@ -90,6 +90,8 @@ BOOST_AUTO_TEST_SUITE(IntegrationTests)
 
 // Test 1: Process that exits immediately (startsecs validation)
 BOOST_AUTO_TEST_CASE(ProcessExitsImmediately) {
+    const std::string BIN_TRUE = std::filesystem::exists("/usr/bin/true") ? "/usr/bin/true" : "/bin/true";
+
     std::string config = R"(
 [unix_http_server]
 file=/tmp/test_integration_socket_1.sock
@@ -101,7 +103,7 @@ logfile=/tmp/test_integration_1.log
 serverurl=unix:///tmp/test_integration_socket_1.sock
 
 [program:exit_immediately]
-command=/bin/true
+command=)" + BIN_TRUE + R"(
 autorestart=false
 startsecs=1
 stdout_logfile=/tmp/test_exit_immediately.log
@@ -256,6 +258,8 @@ stdout_logfile=/tmp/test_proc3.log
 
 // Test 4: Autorestart with failing process
 BOOST_AUTO_TEST_CASE(AutorestartFailingProcess) {
+    const std::string BIN_FALSE = std::filesystem::exists("/usr/bin/false") ? "/usr/bin/false" : "/bin/false";
+
     std::string config = R"(
 [unix_http_server]
 file=/tmp/test_integration_socket_4.sock
@@ -267,7 +271,7 @@ logfile=/tmp/test_integration_4.log
 serverurl=unix:///tmp/test_integration_socket_4.sock
 
 [program:fail_fast]
-command=/bin/false
+command=)" + BIN_FALSE + R"(
 autorestart=true
 startsecs=1
 startretries=3

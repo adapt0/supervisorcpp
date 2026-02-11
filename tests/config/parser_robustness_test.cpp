@@ -484,7 +484,7 @@ stdout_logfile=/var/log/%(program_name)s.log
 
     auto config = ConfigParser::parse_file(temp.path());
     BOOST_CHECK_EQUAL(config.programs[0].command, "/bin/echo test_prog");
-    BOOST_CHECK_EQUAL(config.programs[0].stdout_logfile->string(), "/var/log/test_prog.log");
+    BOOST_CHECK_EQUAL(config.programs[0].stdout_logfile->string(), std::filesystem::weakly_canonical("/var/log/test_prog.log"));
 }
 
 // Test 21: Unknown variable in substitution

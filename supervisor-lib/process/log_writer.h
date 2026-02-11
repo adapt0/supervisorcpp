@@ -25,11 +25,10 @@ public:
 
     ~LogWriter();
 
-    // Disable copy, allow move
     LogWriter(const LogWriter&) = delete;
     LogWriter& operator=(const LogWriter&) = delete;
-    LogWriter(LogWriter&&) = default;
-    LogWriter& operator=(LogWriter&&) = default;
+    LogWriter(LogWriter&&) = delete;
+    LogWriter& operator=(LogWriter&&) = delete;
 
     /**
      * Write data to log file

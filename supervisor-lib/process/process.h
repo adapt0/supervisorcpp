@@ -42,11 +42,10 @@ public:
     explicit Process(boost::asio::io_context& io_context, const config::ProgramConfig& config);
     ~Process();
 
-    // Disable copy, allow move
     Process(const Process&) = delete;
     Process& operator=(const Process&) = delete;
-    Process(Process&&) = default;
-    Process& operator=(Process&&) = default;
+    Process(Process&&) = delete;
+    Process& operator=(Process&&) = delete;
 
     /**
      * Start the process

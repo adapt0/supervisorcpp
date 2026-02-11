@@ -1,19 +1,20 @@
 #include "process.h"
-#include "../util/logger.h"
 #include "setup.h"
+#include "../util/logger.h"
+#include "../util/platform.h"
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <grp.h>
+#include <pwd.h>
+#include <signal.h>
+#include <sstream>
 #include <unistd.h>
+#include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/resource.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <grp.h>
-#include <signal.h>
-#include <cstring>
-#include <cerrno>
-#include <sstream>
-#include <algorithm>
 
 namespace supervisord {
 namespace process {
@@ -219,16 +220,18 @@ ProcessInfo Process::get_info() const {
     info.stderr_logfile = "";  // We redirect stderr to stdout
     info.spawnerr = spawn_error_;
 
-    auto now_time = std::chrono::system_clock::now();
+    const auto now_time = std::chrono::system_clock::now();
     info.now = std::chrono::system_clock::to_time_t(now_time);
 
     if (state_ == config::ProcessState::RUNNING || state_ == config::ProcessState::STARTING) {
-        auto start_sys = std::chrono::system_clock::now() -
-                        (std::chrono::steady_clock::now() - start_time_);
+        const auto start_sys = std::chrono::time_point_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now() -
+            (std::chrono::steady_clock::now() - start_time_)
+        );
         info.start = std::chrono::system_clock::to_time_t(start_sys);
         info.stop = 0;
 
-        int uptime = get_uptime();
+        const int uptime = get_uptime();
         std::ostringstream desc;
         desc << "pid " << pid_ << ", uptime " << (uptime / 3600) << ":"
              << std::setfill('0') << std::setw(2) << ((uptime % 3600) / 60) << ":"

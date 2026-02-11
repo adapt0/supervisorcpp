@@ -47,6 +47,33 @@ command=/bin/echo test_app
     BOOST_CHECK_EQUAL(config.programs[0].command, "/bin/echo test_app");
 }
 
+BOOST_AUTO_TEST_CASE(TestInlineCommentStripping) {
+    // Mimics real supervisord.conf with inline ; comments
+    std::string config_str = R"(
+[unix_http_server]
+file=/run/supervisord.sock
+
+[supervisord]
+logfile=/var/log/supervisord.log ; (main log file;default $CWD/supervisord.log)
+loglevel=info                ; (log level;default info; others: debug,warn,trace)
+childlogdir=/var/log/supervisor ; ('AUTO' child log dir, default $TEMP)
+
+[supervisorctl]
+serverurl=unix:///run/supervisord.sock
+
+[program:test_app]
+command=/bin/echo hello
+startsecs=10 ; ten seconds
+)";
+
+    Configuration config = ConfigParser::parse_string(config_str);
+
+    BOOST_CHECK(config.supervisord.loglevel == LogLevel::INFO);
+    BOOST_CHECK_EQUAL(config.supervisord.logfile.string(), "/var/log/supervisord.log");
+    BOOST_CHECK_EQUAL(config.supervisord.childlogdir.string(), "/var/log/supervisor");
+    BOOST_CHECK_EQUAL(config.programs[0].startsecs, 10);
+}
+
 BOOST_AUTO_TEST_CASE(TestParseProgramConfig) {
     std::string config_str = R"(
 [unix_http_server]
@@ -74,12 +101,12 @@ stopsignal=INT
 
     BOOST_CHECK_EQUAL(prog.name, "my_app");
     BOOST_CHECK_EQUAL(prog.command, "/bin/sleep 60");
-    BOOST_CHECK_EQUAL(prog.directory.value().string(), "/tmp");
+    BOOST_CHECK_EQUAL(prog.directory.value(), "/tmp");
     BOOST_CHECK_EQUAL(prog.autorestart, true);
     BOOST_CHECK_EQUAL(prog.user, "root");
 
     // Check variable substitution
-    BOOST_CHECK_EQUAL(prog.stdout_logfile.value().string(), "/var/log/my_app.log");
+    BOOST_CHECK_EQUAL(prog.stdout_logfile.value(), std::filesystem::weakly_canonical("/var/log/my_app.log"));
 
     // Check size parsing
     BOOST_CHECK_EQUAL(prog.stdout_logfile_maxbytes, 10 * 1024 * 1024);
@@ -219,7 +246,7 @@ BOOST_AUTO_TEST_CASE(TestParseActualFile) {
         BOOST_CHECK_EQUAL(prog.command, "/bin/echo test_app");
         BOOST_CHECK_EQUAL(prog.environment.at("FOO"), "bar");
         BOOST_CHECK_EQUAL(prog.environment.at("BAZ"), "qux");
-        BOOST_CHECK_EQUAL(prog.stdout_logfile.value().string(), "/tmp/test_app.log");
+        BOOST_CHECK_EQUAL(prog.stdout_logfile.value(), std::filesystem::weakly_canonical("/tmp/test_app.log"));
     }
 }
 

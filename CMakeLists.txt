@@ -11,14 +11,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
-# Find Boost (static link libs to reduce target burden)
-set(Boost_USE_STATIC_LIBS ON)
+if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE_LOWER MATCHES debug)
+    # debug build
+else ()
+    # static link libs to reduce target burden
+    set(Boost_USE_STATIC_LIBS ON)
+endif()
+
+# Find Boost
 find_package(Boost 1.84 REQUIRED COMPONENTS
     log
     log_setup
-    filesystem
-    system
-    thread
     program_options
     unit_test_framework
 )
@@ -26,23 +29,22 @@ find_package(Boost 1.84 REQUIRED COMPONENTS
 # Create static library for easier testing
 add_library(supervisord_lib STATIC 
     supervisor-lib/config/config_parser.cpp
-    supervisor-lib/util/logger.cpp
+    supervisor-lib/config/validation.cpp
     supervisor-lib/process/process.cpp
     supervisor-lib/process/process_manager.cpp
     supervisor-lib/process/log_writer.cpp
     supervisor-lib/rpc/rpc_server.cpp
+    supervisor-lib/util/logger.cpp
+    supervisor-lib/util/platform.cpp
 )
 target_include_directories(supervisord_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/supervisor-lib
 )
 target_link_libraries(supervisord_lib PUBLIC
+    Boost::headers
     Boost::log
     Boost::log_setup
-    Boost::filesystem
-    Boost::system
-    Boost::thread
     Boost::program_options
-    pthread
 )
 
 # Unified supervisor binary (busybox-style multi-call binary)

@@ -1,16 +1,38 @@
 #include "config_parser.h"
 #include "validation.h"
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/ini_parser.hpp>
-#include <sstream>
+#include "../util/errors.h"
 #include <algorithm>
 #include <regex>
+#include <sstream>
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 
 namespace supervisord {
 namespace config {
 
 namespace fs = std::filesystem;
 namespace pt = boost::property_tree;
+
+// Strip supervisord-style inline comments (; preceded by whitespace)
+static std::string strip_inline_comment(const std::string& value) {
+    for (size_t i = 1; i < value.size(); ++i) {
+        if (value[i] == ';' && (value[i - 1] == ' ' || value[i - 1] == '\t')) {
+            auto end = value.find_last_not_of(" \t", i - 1);
+            return (end != std::string::npos) ? value.substr(0, end + 1) : "";
+        }
+    }
+    return value;
+}
+
+static void strip_ptree_comments(pt::ptree& tree) {
+    for (auto& [key, subtree] : tree) {
+        auto value = subtree.get_value<std::string>("");
+        if (!value.empty()) {
+            subtree.put_value(strip_inline_comment(value));
+        }
+        strip_ptree_comments(subtree);
+    }
+}
 
 Configuration ConfigParser::parse_file(const fs::path& config_file) {
     if (!fs::exists(config_file)) {
@@ -40,6 +62,7 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
         pt::ptree tree;
         std::istringstream iss(config_str);
         pt::read_ini(iss, tree);
+        strip_ptree_comments(tree);
 
         // Parse unix_http_server section
         if (auto section = tree.get_child_optional("unix_http_server")) {
@@ -197,6 +220,7 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
     try {
         pt::ptree tree;
         pt::read_ini(config_file.string(), tree);
+        strip_ptree_comments(tree);
 
         // Parse unix_http_server section
         if (auto section = tree.get_child_optional("unix_http_server")) {
@@ -237,7 +261,12 @@ void ConfigParser::parse_single_file(const fs::path& config_file, Configuration&
             std::vector<std::string> patterns;
             for (const auto& [key, value] : *section) {
                 if (key == "files") {
-                    patterns.push_back(value.get_value<std::string>());
+                    // Split space-separated glob patterns (supervisord convention)
+                    std::istringstream iss(value.get_value<std::string>());
+                    std::string pattern;
+                    while (iss >> pattern) {
+                        patterns.push_back(pattern);
+                    }
                 }
             }
 

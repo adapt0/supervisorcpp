@@ -257,7 +257,7 @@ std::string RpcServer::handle_shutdown(const std::vector<std::string>& /*params*
     LOG_INFO << "Shutdown requested via RPC";
 
     // Stop the IO context to trigger shutdown
-    io_context_.post([this]() {
+    boost::asio::post(io_context_, [this]() {
         process_manager_.stop_all();
         io_context_.stop();
     });

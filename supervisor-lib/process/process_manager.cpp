@@ -3,6 +3,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <algorithm>
+#include <thread>
 
 namespace supervisord {
 namespace process {
