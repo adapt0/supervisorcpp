@@ -1,19 +1,18 @@
 #include "process_manager.h"
-#include "../util/logger.h"
+#include "../logger/logger.h"
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <algorithm>
 #include <thread>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::process {
 
 ProcessManager::ProcessManager(boost::asio::io_context& io_context,
                                std::chrono::milliseconds update_interval)
-    : io_context_(io_context)
-    , signals_(io_context, SIGCHLD)
-    , timer_(io_context)
-    , update_interval_(update_interval)
+: io_context_(io_context)
+, signals_(io_context, SIGCHLD)
+, timer_(io_context)
+, update_interval_(update_interval)
 {
     LOG_INFO << "ProcessManager initialized";
     setup_signal_handler();
@@ -154,21 +153,21 @@ std::vector<ProcessInfo> ProcessManager::get_all_process_info() const {
 }
 
 bool ProcessManager::has_running_processes() const {
-    return std::any_of(processes_.begin(), processes_.end(),
+    return std::any_of(std::begin(processes_), std::end(processes_),
                       [](const auto& p) { return p->pid() > 0; });
 }
 
 void ProcessManager::setup_signal_handler() {
     signals_.async_wait([this](const boost::system::error_code& error, int /*signal_number*/) {
         if (!error) {
-            handle_sigchld();
+            handle_sigchld_();
             // Re-register handler
             setup_signal_handler();
         }
     });
 }
 
-void ProcessManager::handle_sigchld() {
+void ProcessManager::handle_sigchld_() {
     // Reap all exited children
     while (true) {
         int status;
@@ -209,5 +208,4 @@ void ProcessManager::on_timer() {
     setup_update_timer();
 }
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::process

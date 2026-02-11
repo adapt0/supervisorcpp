@@ -1,14 +1,16 @@
 #include "config_parser.h"
-#include "validation.h"
-#include "../util/errors.h"
+#include "../util/secure.h"
+#include "../util/string.h"
 #include <algorithm>
 #include <regex>
 #include <sstream>
+#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 
-namespace supervisord {
-namespace config {
+namespace supervisorcpp::config {
+
+constexpr const auto MAX_DEPTH = 10;
 
 namespace fs = std::filesystem;
 namespace pt = boost::property_tree;
@@ -39,172 +41,39 @@ Configuration ConfigParser::parse_file(const fs::path& config_file) {
         throw ConfigParseError("Configuration file not found: " + config_file.string());
     }
 
-    // SECURITY: Validate config file ownership and permissions
-    try {
-        config::validate_config_file_security(config_file);
-    } catch (const SecurityError& e) {
-        throw ConfigParseError("Security validation failed: " + std::string(e.what()));
-    }
-
     Configuration config;
-    parse_single_file(config_file, config);
-
-    // Validate the configuration
-    validate_config(config);
+    parse_single_file_(config_file, config, 0);
+    validate_config_(config);
 
     return config;
 }
 
-Configuration ConfigParser::parse_string(const std::string& config_str) {
-    Configuration config;
+void ConfigParser::parse_single_file_(const std::filesystem::path& config_file, Configuration& config, size_t depth) {
+    const auto inserted = config.included.insert(
+        fs::weakly_canonical(config_file)
+    ).second;
+    if (!inserted) throw ConfigParseError("Configuration file " + config_file.string() + " has already been included!");
+
+    // SECURITY: Validate config file ownership and permissions
+    try {
+        util::validate_config_file_security(config_file);
+    } catch (const util::SecurityError& e) {
+        throw ConfigParseError("Security validation failed: " + std::string(e.what()));
+    }
 
     try {
-        pt::ptree tree;
-        std::istringstream iss(config_str);
-        pt::read_ini(iss, tree);
-        strip_ptree_comments(tree);
+        std::ifstream ifs{config_file.string()};
+        parse_stream_(ifs, config, config_file.parent_path(), depth);
+    } catch (const std::exception& e) {
+        throw ConfigParseError("INI parsing error in " + config_file.string() + ": " + e.what());
+    }
+}
 
-        // Parse unix_http_server section
-        if (auto section = tree.get_child_optional("unix_http_server")) {
-            if (auto file = section->get_optional<std::string>("file")) {
-                config.unix_http_server.socket_file = *file;
-            }
-        }
-
-        // Parse supervisord section
-        if (auto section = tree.get_child_optional("supervisord")) {
-            if (auto logfile = section->get_optional<std::string>("logfile")) {
-                config.supervisord.logfile = *logfile;
-            }
-            if (auto loglevel = section->get_optional<std::string>("loglevel")) {
-                try {
-                    config.supervisord.loglevel = parse_log_level(*loglevel);
-                } catch (const std::invalid_argument& e) {
-                    throw ConfigParseError("[supervisord] " + std::string(e.what()));
-                }
-            }
-            if (auto user = section->get_optional<std::string>("user")) {
-                config.supervisord.user = *user;
-            }
-            if (auto childlogdir = section->get_optional<std::string>("childlogdir")) {
-                config.supervisord.childlogdir = *childlogdir;
-            }
-        }
-
-        // Parse supervisorctl section
-        if (auto section = tree.get_child_optional("supervisorctl")) {
-            if (auto serverurl = section->get_optional<std::string>("serverurl")) {
-                config.supervisorctl.serverurl = *serverurl;
-            }
-        }
-
-        // Parse program sections
-        for (const auto& [key, value] : tree) {
-            if (key.starts_with("program:")) {
-                ProgramConfig prog;
-                prog.name = key.substr(8); // Remove "program:" prefix
-
-                // Required: command
-                if (auto command = value.get_optional<std::string>("command")) {
-                    prog.command = *command;
-                } else {
-                    throw ConfigParseError("Program [" + key + "] missing required 'command'");
-                }
-
-                // Optional: environment
-                if (auto env = value.get_optional<std::string>("environment")) {
-                    auto parsed_env = parse_environment(*env);
-                    // SECURITY: Sanitize environment variables
-                    prog.environment = config::sanitize_environment(parsed_env);
-                }
-
-                // Optional: directory
-                if (auto dir = value.get_optional<std::string>("directory")) {
-                    prog.directory = *dir;
-                }
-
-                // Optional: autorestart
-                if (auto autorestart = value.get_optional<std::string>("autorestart")) {
-                    std::string val = *autorestart;
-                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-                    prog.autorestart = (val == "true" || val == "yes" || val == "1");
-                }
-
-                // Optional: user
-                if (auto user = value.get_optional<std::string>("user")) {
-                    prog.user = *user;
-                }
-
-                // Optional: stdout_logfile
-                if (auto logfile = value.get_optional<std::string>("stdout_logfile")) {
-                    prog.stdout_logfile = prog.substitute_variables(*logfile);
-                }
-
-                // Optional: stdout_logfile_maxbytes
-                if (auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
-                    try {
-                        prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
-                    } catch (const std::invalid_argument& e) {
-                        throw ConfigParseError("Program [" + key + "]: " + e.what());
-                    }
-                }
-
-                // Optional: redirect_stderr
-                if (auto redirect = value.get_optional<std::string>("redirect_stderr")) {
-                    std::string val = *redirect;
-                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-                    prog.redirect_stderr = (val == "true" || val == "yes" || val == "1");
-                }
-
-                // Optional: startsecs
-                if (auto startsecs = value.get_optional<int>("startsecs")) {
-                    prog.startsecs = *startsecs;
-                }
-
-                // Optional: startretries
-                if (auto startretries = value.get_optional<int>("startretries")) {
-                    prog.startretries = *startretries;
-                }
-
-                // Optional: stopwaitsecs
-                if (auto stopwaitsecs = value.get_optional<int>("stopwaitsecs")) {
-                    prog.stopwaitsecs = *stopwaitsecs;
-                }
-
-                // Optional: stopsignal
-                if (auto stopsignal = value.get_optional<std::string>("stopsignal")) {
-                    try {
-                        validate_signal(*stopsignal);
-                        prog.stopsignal = *stopsignal;
-                    } catch (const std::invalid_argument& e) {
-                        throw ConfigParseError("Program [" + key + "]: " + e.what());
-                    }
-                }
-
-                // Apply variable substitution to command
-                prog.command = prog.substitute_variables(prog.command);
-
-                // SECURITY: Validate command path is absolute and safe
-                try {
-                    config::validate_command_path(prog.command);
-                } catch (const SecurityError& e) {
-                    throw ConfigParseError("Program [" + key + "]: " + e.what());
-                }
-
-                // SECURITY: Validate log file paths if specified
-                if (prog.stdout_logfile) {
-                    try {
-                        // This will throw if path is unsafe
-                        prog.stdout_logfile = config::validate_log_path(*prog.stdout_logfile);
-                    } catch (const SecurityError& e) {
-                        throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
-                    }
-                }
-
-                config.programs.push_back(std::move(prog));
-            }
-        }
-
+Configuration ConfigParser::parse_string(const std::string& config_str) {
+    Configuration config;
+    std::istringstream iss(config_str);
+    try {
+        parse_stream_(iss, config, std::filesystem::path{}, 0);
     } catch (const pt::ini_parser_error& e) {
         throw ConfigParseError("INI parsing error: " + std::string(e.what()));
     } catch (const ConfigParseError&) {
@@ -216,196 +85,186 @@ Configuration ConfigParser::parse_string(const std::string& config_str) {
     return config;
 }
 
-void ConfigParser::parse_single_file(const fs::path& config_file, Configuration& config) {
-    try {
-        pt::ptree tree;
-        pt::read_ini(config_file.string(), tree);
-        strip_ptree_comments(tree);
+void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const std::filesystem::path& base_dir, size_t depth) {
+    if (!is) throw ConfigParseError("Invalid stream");
+    if (depth >= MAX_DEPTH) throw ConfigParseError("Include depth limit of " + std::to_string(MAX_DEPTH) + " hit");
 
-        // Parse unix_http_server section
-        if (auto section = tree.get_child_optional("unix_http_server")) {
-            if (auto file = section->get_optional<std::string>("file")) {
-                config.unix_http_server.socket_file = *file;
+    pt::ptree tree;
+    pt::read_ini(is, tree);
+    strip_ptree_comments(tree);
+
+    // Parse unix_http_server section
+    if (const auto section = tree.get_child_optional("unix_http_server")) {
+        if (auto file = section->get_optional<std::string>("file")) {
+            config.unix_http_server.socket_file = *file;
+        }
+    }
+
+    // Parse supervisord section
+    if (const auto section = tree.get_child_optional("supervisord")) {
+        if (auto logfile = section->get_optional<std::string>("logfile")) {
+            config.supervisord.logfile = *logfile;
+        }
+        if (auto loglevel = section->get_optional<std::string>("loglevel")) {
+            try {
+                config.supervisord.loglevel = logger::parse_log_level(*loglevel);
+            } catch (const std::invalid_argument& e) {
+                throw ConfigParseError("[supervisord] " + std::string(e.what()));
+            }
+        }
+        if (auto user = section->get_optional<std::string>("user")) {
+            config.supervisord.user = *user;
+        }
+        if (auto childlogdir = section->get_optional<std::string>("childlogdir")) {
+            config.supervisord.childlogdir = *childlogdir;
+        }
+    }
+
+    // Parse supervisorctl section
+    if (auto section = tree.get_child_optional("supervisorctl")) {
+        if (auto serverurl = section->get_optional<std::string>("serverurl")) {
+            config.supervisorctl.serverurl = *serverurl;
+        }
+    }
+
+    // Parse include section and recursively load included files
+    if (auto section = tree.get_child_optional("include")) {
+        std::vector<std::string> patterns;
+        for (const auto& [key, value] : *section) {
+            if (key == "files") {
+                // Split space-separated glob patterns (supervisord convention)
+                std::istringstream iss(value.get_value<std::string>());
+                std::string pattern;
+                while (iss >> pattern) {
+                    patterns.push_back(pattern);
+                }
             }
         }
 
-        // Parse supervisord section
-        if (auto section = tree.get_child_optional("supervisord")) {
-            if (auto logfile = section->get_optional<std::string>("logfile")) {
-                config.supervisord.logfile = *logfile;
+        if (!patterns.empty()) {
+            if (!base_dir.empty()) parse_includes_(base_dir, patterns, config, depth + 1);
+        }
+    }
+
+    // Parse program sections
+    for (const auto& [key, value] : tree) {
+        if (key.starts_with("program:")) {
+            ProgramConfig prog;
+            prog.name = key.substr(8); // Remove "program:" prefix
+
+            // Required: command
+            if (const auto command = value.get_optional<std::string>("command")) {
+                prog.command = *command;
+            } else {
+                throw ConfigParseError("Program [" + key + "] missing required 'command'");
             }
-            if (auto loglevel = section->get_optional<std::string>("loglevel")) {
+
+            // Optional: environment
+            if (const auto env = value.get_optional<std::string>("environment")) {
+                const auto parsed_env = parse_environment_(*env);
+                // SECURITY: Sanitize environment variables
+                prog.environment = util::sanitize_environment(parsed_env);
+            }
+
+            // Optional: directory
+            if (const auto dir = value.get_optional<std::string>("directory")) {
+                prog.directory = *dir;
+            }
+
+            // Optional: autorestart
+            if (const auto autorestart = value.get_optional<std::string>("autorestart")) {
+                const auto val = boost::algorithm::to_lower_copy(*autorestart);
+                prog.autorestart = (val == "true" || val == "yes" || val == "1");
+            }
+
+            // Optional: user
+            if (const auto user = value.get_optional<std::string>("user")) {
+                prog.user = *user;
+            }
+
+            // Optional: stdout_logfile
+            if (const auto logfile = value.get_optional<std::string>("stdout_logfile")) {
+                prog.stdout_logfile = prog.substitute_variables(*logfile);
+            }
+
+            // Optional: stdout_logfile_maxbytes
+            if (const auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
                 try {
-                    config.supervisord.loglevel = parse_log_level(*loglevel);
+                    prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
                 } catch (const std::invalid_argument& e) {
-                    throw ConfigParseError("[supervisord] " + std::string(e.what()));
-                }
-            }
-            if (auto user = section->get_optional<std::string>("user")) {
-                config.supervisord.user = *user;
-            }
-            if (auto childlogdir = section->get_optional<std::string>("childlogdir")) {
-                config.supervisord.childlogdir = *childlogdir;
-            }
-        }
-
-        // Parse supervisorctl section
-        if (auto section = tree.get_child_optional("supervisorctl")) {
-            if (auto serverurl = section->get_optional<std::string>("serverurl")) {
-                config.supervisorctl.serverurl = *serverurl;
-            }
-        }
-
-        // Parse include section and recursively load included files
-        if (auto section = tree.get_child_optional("include")) {
-            std::vector<std::string> patterns;
-            for (const auto& [key, value] : *section) {
-                if (key == "files") {
-                    // Split space-separated glob patterns (supervisord convention)
-                    std::istringstream iss(value.get_value<std::string>());
-                    std::string pattern;
-                    while (iss >> pattern) {
-                        patterns.push_back(pattern);
-                    }
-                }
-            }
-
-            if (!patterns.empty()) {
-                fs::path base_dir = config_file.parent_path();
-                if (base_dir.empty()) {
-                    base_dir = fs::current_path();
-                }
-                parse_includes(base_dir, patterns, config);
-            }
-        }
-
-        // Parse program sections
-        for (const auto& [key, value] : tree) {
-            if (key.starts_with("program:")) {
-                ProgramConfig prog;
-                prog.name = key.substr(8); // Remove "program:" prefix
-
-                // Required: command
-                if (auto command = value.get_optional<std::string>("command")) {
-                    prog.command = *command;
-                } else {
-                    throw ConfigParseError("Program [" + key + "] missing required 'command'");
-                }
-
-                // Optional: environment
-                if (auto env = value.get_optional<std::string>("environment")) {
-                    auto parsed_env = parse_environment(*env);
-                    // SECURITY: Sanitize environment variables
-                    prog.environment = config::sanitize_environment(parsed_env);
-                }
-
-                // Optional: directory
-                if (auto dir = value.get_optional<std::string>("directory")) {
-                    prog.directory = *dir;
-                }
-
-                // Optional: autorestart
-                if (auto autorestart = value.get_optional<std::string>("autorestart")) {
-                    std::string val = *autorestart;
-                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-                    prog.autorestart = (val == "true" || val == "yes" || val == "1");
-                }
-
-                // Optional: user
-                if (auto user = value.get_optional<std::string>("user")) {
-                    prog.user = *user;
-                }
-
-                // Optional: stdout_logfile
-                if (auto logfile = value.get_optional<std::string>("stdout_logfile")) {
-                    prog.stdout_logfile = prog.substitute_variables(*logfile);
-                }
-
-                // Optional: stdout_logfile_maxbytes
-                if (auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
-                    try {
-                        prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
-                    } catch (const std::invalid_argument& e) {
-                        throw ConfigParseError("Program [" + key + "]: " + e.what());
-                    }
-                }
-
-                // Optional: redirect_stderr
-                if (auto redirect = value.get_optional<std::string>("redirect_stderr")) {
-                    std::string val = *redirect;
-                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
-                    prog.redirect_stderr = (val == "true" || val == "yes" || val == "1");
-                }
-
-                // Optional: startsecs
-                if (auto startsecs = value.get_optional<int>("startsecs")) {
-                    prog.startsecs = *startsecs;
-                }
-
-                // Optional: startretries
-                if (auto startretries = value.get_optional<int>("startretries")) {
-                    prog.startretries = *startretries;
-                }
-
-                // Optional: stopwaitsecs
-                if (auto stopwaitsecs = value.get_optional<int>("stopwaitsecs")) {
-                    prog.stopwaitsecs = *stopwaitsecs;
-                }
-
-                // Optional: stopsignal
-                if (auto stopsignal = value.get_optional<std::string>("stopsignal")) {
-                    try {
-                        validate_signal(*stopsignal);
-                        prog.stopsignal = *stopsignal;
-                    } catch (const std::invalid_argument& e) {
-                        throw ConfigParseError("Program [" + key + "]: " + e.what());
-                    }
-                }
-
-                // Apply variable substitution to command
-                prog.command = prog.substitute_variables(prog.command);
-
-                // SECURITY: Validate command path is absolute and safe
-                try {
-                    config::validate_command_path(prog.command);
-                } catch (const SecurityError& e) {
                     throw ConfigParseError("Program [" + key + "]: " + e.what());
                 }
-
-                // SECURITY: Validate log file paths if specified
-                if (prog.stdout_logfile) {
-                    try {
-                        // This will throw if path is unsafe
-                        prog.stdout_logfile = config::validate_log_path(*prog.stdout_logfile);
-                    } catch (const SecurityError& e) {
-                        throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
-                    }
-                }
-
-                config.programs.push_back(std::move(prog));
             }
-        }
 
-    } catch (const pt::ini_parser_error& e) {
-        throw ConfigParseError("INI parsing error in " + config_file.string() + ": " + e.what());
+            // Optional: redirect_stderr
+            if (const auto redirect = value.get_optional<std::string>("redirect_stderr")) {
+                const auto val = boost::algorithm::to_lower_copy(*redirect);
+                prog.redirect_stderr = (val == "true" || val == "yes" || val == "1");
+            }
+
+            // Optional: startsecs
+            if (const auto startsecs = value.get_optional<int>("startsecs")) {
+                prog.startsecs = *startsecs;
+            }
+
+            // Optional: startretries
+            if (const auto startretries = value.get_optional<int>("startretries")) {
+                prog.startretries = *startretries;
+            }
+
+            // Optional: stopwaitsecs
+            if (const auto stopwaitsecs = value.get_optional<int>("stopwaitsecs")) {
+                prog.stopwaitsecs = *stopwaitsecs;
+            }
+
+            // Optional: stopsignal
+            if (const auto stopsignal = value.get_optional<std::string>("stopsignal")) {
+                try {
+                    util::validate_signal(*stopsignal);
+                    prog.stopsignal = *stopsignal;
+                } catch (const std::invalid_argument& e) {
+                    throw ConfigParseError("Program [" + key + "]: " + e.what());
+                }
+            }
+
+            // Apply variable substitution to command
+            prog.command = prog.substitute_variables(prog.command);
+
+            // SECURITY: Validate command path is absolute and safe
+            try {
+                util::validate_command_path(prog.command);
+            } catch (const util::SecurityError& e) {
+                throw ConfigParseError("Program [" + key + "]: " + e.what());
+            }
+
+            // SECURITY: Validate log file paths if specified
+            if (prog.stdout_logfile) {
+                try {
+                    // This will throw if path is unsafe
+                    prog.stdout_logfile = util::validate_log_path(*prog.stdout_logfile);
+                } catch (const util::SecurityError& e) {
+                    throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
+                }
+            }
+
+            config.programs.push_back(std::move(prog));
+        }
     }
 }
 
-void ConfigParser::parse_includes(const fs::path& base_dir,
+void ConfigParser::parse_includes_(const fs::path& base_dir,
                                   const std::vector<std::string>& patterns,
-                                  Configuration& config) {
+                                  Configuration& config, size_t depth) {
     for (const auto& pattern : patterns) {
-        auto files = expand_glob(base_dir, pattern);
+        const auto files = expand_glob_(base_dir, pattern);
         for (const auto& file : files) {
-            parse_single_file(file, config);
+            parse_single_file_(file, config, depth);
         }
     }
 }
 
-std::vector<fs::path> ConfigParser::expand_glob(const fs::path& base_dir,
+std::vector<fs::path> ConfigParser::expand_glob_(const fs::path& base_dir,
                                                  const std::string& pattern) {
-    std::vector<fs::path> results;
-
     // Handle absolute vs relative paths
     fs::path search_path;
     if (pattern[0] == '/') {
@@ -416,18 +275,14 @@ std::vector<fs::path> ConfigParser::expand_glob(const fs::path& base_dir,
 
     // Extract directory and filename pattern
     fs::path dir = search_path.parent_path();
-    std::string filename_pattern = search_path.filename().string();
-
-    // Convert glob pattern to regex
-    std::string regex_pattern = filename_pattern;
-    // Escape special regex characters except * and ?
-    regex_pattern = std::regex_replace(regex_pattern, std::regex("\\."), "\\.");
-    regex_pattern = std::regex_replace(regex_pattern, std::regex("\\*"), ".*");
-    regex_pattern = std::regex_replace(regex_pattern, std::regex("\\?"), ".");
-
-    std::regex file_regex(regex_pattern);
+    
+    // Convert glob pattern to regex, escaping special regex characters (except * and ?)
+    const std::regex file_regex{util::glob_to_regex(
+        search_path.filename().string()
+    )};
 
     // Search directory
+    std::vector<fs::path> results;
     if (fs::exists(dir) && fs::is_directory(dir)) {
         for (const auto& entry : fs::directory_iterator(dir)) {
             if (entry.is_regular_file()) {
@@ -440,30 +295,27 @@ std::vector<fs::path> ConfigParser::expand_glob(const fs::path& base_dir,
     }
 
     // Sort results for consistent ordering
-    std::sort(results.begin(), results.end());
+    std::sort(std::begin(results), std::end(results));
 
     return results;
 }
 
-std::map<std::string, std::string> ConfigParser::parse_environment(const std::string& env_str) {
-    std::map<std::string, std::string> env_map;
-
+std::map<std::string, std::string> ConfigParser::parse_environment_(const std::string& env_str) {
     // Split by comma
     std::istringstream iss(env_str);
     std::string pair;
 
+    std::map<std::string, std::string> env_map;
     while (std::getline(iss, pair, ',')) {
         // Trim whitespace
         pair.erase(0, pair.find_first_not_of(" \t"));
         pair.erase(pair.find_last_not_of(" \t") + 1);
 
         // Skip empty pairs
-        if (pair.empty()) {
-            continue;
-        }
+        if (pair.empty()) continue;
 
         // Split by '='
-        size_t eq_pos = pair.find('=');
+        const size_t eq_pos = pair.find('=');
         if (eq_pos == std::string::npos) {
             throw ConfigParseError("Invalid environment variable format (missing '='): " + pair);
         }
@@ -485,9 +337,7 @@ std::map<std::string, std::string> ConfigParser::parse_environment(const std::st
             }
         }
 
-        if (key.empty()) {
-            throw ConfigParseError("Invalid environment variable format (empty key): " + pair);
-        }
+        if (key.empty()) throw ConfigParseError("Invalid environment variable format (empty key): " + pair);
 
         env_map[key] = value;
     }
@@ -495,7 +345,7 @@ std::map<std::string, std::string> ConfigParser::parse_environment(const std::st
     return env_map;
 }
 
-void ConfigParser::validate_config(const Configuration& config) {
+void ConfigParser::validate_config_(const Configuration& config) {
     // Check that we have at least the required sections
     // unix_http_server is required for RPC
     if (config.unix_http_server.socket_file.empty()) {
@@ -520,5 +370,4 @@ void ConfigParser::validate_config(const Configuration& config) {
     }
 }
 
-} // namespace config
-} // namespace supervisord
+} // namespace supervisorcpp::config

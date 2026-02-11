@@ -1,7 +1,8 @@
 #pragma once
+#ifndef SUPERVISOR_LIB__PROCESS__PROCESS
+#define SUPERVISOR_LIB__PROCESS__PROCESS
 
 #include "../config/config_types.h"
-#include "log_writer.h"
 #include <boost/asio.hpp>
 #include <sys/types.h>
 #include <chrono>
@@ -10,19 +11,34 @@
 #include <optional>
 #include <array>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::logger {
+    class LogWriter;
+}
+
+namespace supervisorcpp::process {
 
 using TimePoint = std::chrono::steady_clock::time_point;
+
+/**
+ * Process state enumeration (supervisord compatible)
+ */
+enum class State {
+    STOPPED = 0,
+    STARTING = 10,
+    RUNNING = 20,
+    BACKOFF = 30,
+    STOPPING = 40,
+    EXITED = 100,
+    FATAL = 200
+};
+std::ostream& operator<<(std::ostream& outs, State state);
 
 /**
  * Information about a process for status reporting
  */
 struct ProcessInfo {
     std::string name;
-    std::string group;  // Same as name (no groups in minimal version)
-    config::ProcessState state;
-    int state_code;
+    State state;
     pid_t pid;
     int exitstatus;
     std::string stdout_logfile;
@@ -77,13 +93,13 @@ public:
     void update();
 
     // Getters
-    const std::string& name() const { return config_.name; }
-    const config::ProgramConfig& config() const { return config_; }
-    config::ProcessState state() const { return state_; }
-    pid_t pid() const { return pid_; }
-    bool is_running() const { return state_ == config::ProcessState::RUNNING; }
-    bool should_autorestart() const { return config_.autorestart && state_ != config::ProcessState::FATAL; }
-    int retry_count() const { return retry_count_; }
+    const std::string& name() const noexcept { return config_.name; }
+    const config::ProgramConfig& config() const noexcept { return config_; }
+    State state() const noexcept { return state_; }
+    pid_t pid() const noexcept { return pid_; }
+    bool is_running() const noexcept { return state_ == State::RUNNING; }
+    bool should_autorestart() const noexcept { return config_.autorestart && state_ != State::FATAL; }
+    int retry_count() const noexcept { return retry_count_; }
 
     /**
      * Get process info for status reporting
@@ -138,7 +154,7 @@ private:
     /**
      * Transition to a new state
      */
-    void set_state(config::ProcessState new_state);
+    void set_state(State new_state);
 
     /**
      * Record spawn error
@@ -153,7 +169,7 @@ private:
     /**
      * Handle stdout read completion
      */
-    void handle_stdout_read(const boost::system::error_code& error, size_t bytes_transferred);
+    void handle_stdout_read_(const boost::system::error_code& error, size_t bytes_transferred);
 
     // Configuration
     config::ProgramConfig config_;
@@ -162,7 +178,7 @@ private:
     boost::asio::io_context& io_context_;
 
     // State
-    config::ProcessState state_;
+    State state_;
     pid_t pid_;
     int exitstatus_;
     int retry_count_;
@@ -174,12 +190,13 @@ private:
     TimePoint state_change_time_;
 
     // Log writer
-    std::unique_ptr<LogWriter> log_writer_;
+    std::unique_ptr<logger::LogWriter> log_writer_;
 
     // Async IO for stdout/stderr
     std::unique_ptr<boost::asio::posix::stream_descriptor> stdout_stream_;
     std::array<char, 4096> stdout_buffer_;
 };
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::process
+
+#endif // SUPERVISOR_LIB__PROCESS__PROCESS

@@ -1,31 +1,28 @@
 #include "log_writer.h"
-#include "../util/logger.h"
-#include <sstream>
+#include "logger.h"
 #include <algorithm>
+#include <sstream>
 #include <sys/stat.h>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::logger {
 
 LogWriter::LogWriter(const std::filesystem::path& logfile,
                      size_t max_bytes,
                      int backups)
-    : logfile_(logfile)
-    , max_bytes_(max_bytes)
-    , backups_(backups)
-    , current_size_(0)
+: logfile_(logfile)
+, max_bytes_(max_bytes)
+, backups_(backups)
+, current_size_(0)
 {
-    ensure_directory();
-    open();
+    ensure_directory_();
+    openNL_();
 }
 
 LogWriter::~LogWriter() {
-    close();
+    closeNL_();
 }
 
-bool LogWriter::open() {
-    std::lock_guard<std::mutex> lock(mutex_);
-
+bool LogWriter::openNL_() {
     // Close existing file if open
     if (file_.is_open()) {
         file_.close();
@@ -62,9 +59,7 @@ ssize_t LogWriter::write(const std::string& data) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (!file_.is_open()) {
-        if (!open()) {
-            return -1;
-        }
+        if (!openNL_()) return -1;
     }
 
     // Add to pending buffer
@@ -80,7 +75,7 @@ ssize_t LogWriter::write(const std::string& data) {
 
         // Check if we need to rotate before writing
         if (max_bytes_ > 0 && current_size_ + to_write.size() > max_bytes_) {
-            rotate();
+            rotateNL_();
         }
 
         // Write the complete lines
@@ -123,28 +118,24 @@ void LogWriter::flush() {
     }
 }
 
-void LogWriter::close() {
-    std::lock_guard<std::mutex> lock(mutex_);
+void LogWriter::closeNL_() {
+    if (!file_.is_open()) return;
 
     // Write any pending buffer
-    if (!pending_buffer_.empty() && file_.is_open()) {
+    if (!pending_buffer_.empty()) {
         file_.write(pending_buffer_.c_str(), pending_buffer_.size());
         current_size_ += pending_buffer_.size();
         pending_buffer_.clear();
     }
 
-    if (file_.is_open()) {
-        file_.close();
-    }
+    file_.close();
 }
 
-void LogWriter::rotate() {
+void LogWriter::rotateNL_() {
     LOG_INFO << "Rotating log file: " << logfile_;
 
     // Close current file
-    if (file_.is_open()) {
-        file_.close();
-    }
+    if (file_.is_open()) file_.close();
 
     // Rotate existing backups
     // logfile.9 -> delete
@@ -184,10 +175,10 @@ void LogWriter::rotate() {
 
     // Open new log file
     current_size_ = 0;
-    open();
+    openNL_();
 }
 
-bool LogWriter::ensure_directory() {
+bool LogWriter::ensure_directory_() {
     try {
         std::filesystem::path dir = logfile_.parent_path();
         if (!dir.empty() && !std::filesystem::exists(dir)) {
@@ -201,5 +192,4 @@ bool LogWriter::ensure_directory() {
     }
 }
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::process

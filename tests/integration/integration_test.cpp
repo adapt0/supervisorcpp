@@ -13,16 +13,16 @@
 #define BOOST_TEST_MODULE IntegrationTest
 #include <boost/test/unit_test.hpp>
 #include "config/config_parser.h"
+#include "logger/logger.h"
 #include "process/process_manager.h"
 #include "rpc/rpc_server.h"
-#include "util/logger.h"
-#include <boost/asio.hpp>
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <boost/asio.hpp>
 
 namespace fs = std::filesystem;
-using namespace supervisord;
+using namespace supervisorcpp;
 using namespace std::chrono_literals;
 
 // Helper to create test config files
@@ -57,24 +57,21 @@ bool poll_until(boost::asio::io_context& io,
                 std::chrono::milliseconds timeout = 5000ms,
                 std::chrono::milliseconds interval = 50ms)
 {
+    boost::asio::steady_timer timer{io};
     bool met = false;
-    auto start = std::chrono::steady_clock::now();
-
-    boost::asio::steady_timer timer(io);
 
     std::function<void()> poll;
-    poll = [&]() {
-        if (condition()) {
-            met = true;
-            io.stop();
-            return;
-        }
-        if (std::chrono::steady_clock::now() - start >= timeout) {
+    poll = [
+        start{std::chrono::steady_clock::now()},
+        &condition, interval, &io, &met, &poll, timeout, &timer
+    ]() {
+        met = condition();
+        if (met || std::chrono::steady_clock::now() - start >= timeout) {
             io.stop();
             return;
         }
         timer.expires_after(interval);
-        timer.async_wait([&](const boost::system::error_code& ec) {
+        timer.async_wait([&poll](const boost::system::error_code& ec) {
             if (!ec) poll();
         });
     };
@@ -85,6 +82,22 @@ bool poll_until(boost::asio::io_context& io,
 
     return met;
 }
+
+bool poll_until_state(
+    boost::asio::io_context& io,
+    const process::ProcessManager& pm,
+    process::State state,
+    std::chrono::milliseconds timeout = 5000ms,
+    std::chrono::milliseconds interval = 50ms
+) {
+    return poll_until(io, [&pm, state] {
+        const auto info = pm.get_all_process_info();
+        return std::all_of(std::begin(info), std::end(info), [state](const auto& i) {
+            return (i.state == state);
+        });
+    }, timeout, interval);
+}
+
 
 BOOST_AUTO_TEST_SUITE(IntegrationTests)
 
@@ -121,15 +134,12 @@ stdout_logfile=/tmp/test_exit_immediately.log
 
     pm.start_all();
 
-    bool reached = poll_until(io_context, [&] {
-        auto info = pm.get_all_process_info();
-        return !info.empty() && (info[0].state_code == 100 || info[0].state_code == 200);
-    });
-
-    BOOST_CHECK(reached);
-    auto info = pm.get_all_process_info();
-    BOOST_REQUIRE_EQUAL(info.size(), 1);
-    BOOST_CHECK(info[0].state_code == 100 || info[0].state_code == 200);
+    BOOST_CHECK( 
+        poll_until(io_context, [&pm] {
+            auto info = pm.get_all_process_info();
+            return !info.empty() && (info[0].state == process::State::EXITED || info[0].state == process::State::FATAL);
+        })
+    );
 
     fs::remove("/tmp/test_integration_socket_1.sock");
     fs::remove("/tmp/test_integration_1.log");
@@ -167,26 +177,18 @@ stdout_logfile=/tmp/test_long_running.log
 
     // Start and wait for RUNNING
     pm.start_all();
-    BOOST_CHECK(poll_until(io_context, [&] {
-        return pm.get_all_process_info()[0].state_code == 20;
-    }));
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::RUNNING));
 
     // Stop and wait for STOPPED
     pm.stop_process("long_running");
-    BOOST_CHECK(poll_until(io_context, [&] {
-        return pm.get_all_process_info()[0].state_code == 0;
-    }));
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::STOPPED));
 
     // Restart and wait for RUNNING
     pm.start_process("long_running");
-    BOOST_CHECK(poll_until(io_context, [&] {
-        return pm.get_all_process_info()[0].state_code == 20;
-    }));
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::RUNNING));
 
     pm.stop_all();
-    poll_until(io_context, [&] {
-        return pm.get_all_process_info()[0].state_code == 0;
-    });
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::STOPPED));
 
     fs::remove("/tmp/test_integration_socket_2.sock");
     fs::remove("/tmp/test_integration_2.log");
@@ -232,22 +234,11 @@ stdout_logfile=/tmp/test_proc3.log
     }
 
     pm.start_all();
-
-    BOOST_CHECK(poll_until(io_context, [&] {
-        int running = 0;
-        for (const auto& p : pm.get_all_process_info())
-            if (p.state_code == 20) running++;
-        return running == 3;
-    }));
-
     BOOST_CHECK_EQUAL(pm.get_all_process_info().size(), 3);
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::RUNNING));
 
     pm.stop_all();
-    poll_until(io_context, [&] {
-        for (const auto& p : pm.get_all_process_info())
-            if (p.state_code != 0) return false;
-        return true;
-    });
+    BOOST_CHECK(poll_until_state(io_context, pm, process::State::STOPPED));
 
     fs::remove("/tmp/test_integration_socket_3.sock");
     fs::remove("/tmp/test_integration_3.log");
@@ -291,15 +282,7 @@ stdout_logfile=/tmp/test_fail_fast.log
     pm.start_all();
 
     // Retries with backoff may take a few seconds
-    bool reached = poll_until(io_context, [&] {
-        auto info = pm.get_all_process_info();
-        return !info.empty() && info[0].state_code == 200;
-    }, 10000ms);
-
-    BOOST_CHECK(reached);
-    auto info = pm.get_all_process_info();
-    BOOST_REQUIRE_EQUAL(info.size(), 1);
-    BOOST_CHECK_EQUAL(info[0].state_code, 200); // FATAL
+    BOOST_CHECK( poll_until_state(io_context, pm, process::State::FATAL, 10000ms) );
 
     fs::remove("/tmp/test_integration_socket_4.sock");
     fs::remove("/tmp/test_integration_4.log");
@@ -338,7 +321,7 @@ stdout_logfile=/tmp/test_echo.log
     pm.start_all();
 
     // Process itself takes ~2s (has sleep 2), poll until log has final output
-    bool reached = poll_until(io_context, [&] {
+    bool reached = poll_until(io_context, [] {
         if (!fs::exists("/tmp/test_echo.log")) return false;
         std::ifstream log("/tmp/test_echo.log");
         std::string content((std::istreambuf_iterator<char>(log)),
@@ -393,7 +376,7 @@ stdout_logfile=/tmp/test_pwd.log
 
     pm.start_all();
 
-    bool reached = poll_until(io_context, [&] {
+    bool reached = poll_until(io_context, [] {
         if (!fs::exists("/tmp/test_pwd.log")) return false;
         std::ifstream log("/tmp/test_pwd.log");
         std::string content((std::istreambuf_iterator<char>(log)),
@@ -448,22 +431,20 @@ stdout_logfile=/tmp/test_rapid.log
         pm.start_process("rapid_test");
 
         // Wait until process is at least STARTING
-        poll_until(io_context, [&] {
-            auto info = pm.get_all_process_info();
-            return !info.empty() && info[0].state_code >= 10;
+        poll_until(io_context, [&pm] {
+            const auto info = pm.get_all_process_info();
+            return !info.empty() && info[0].state >= process::State::STARTING;
         }, 2000ms);
 
         pm.stop_process("rapid_test");
 
         // Wait until fully STOPPED before next cycle
-        poll_until(io_context, [&] {
-            auto info = pm.get_all_process_info();
-            return !info.empty() && info[0].state_code == 0;
-        }, 3000ms);
+        poll_until_state(io_context, pm, process::State::STOPPED, 3000ms);
     }
 
-    auto info = pm.get_all_process_info();
-    BOOST_CHECK(info[0].state_code == 0 || info[0].state_code == 40);
+    const auto info = pm.get_all_process_info();
+    BOOST_REQUIRE_EQUAL(info.size(), 1);
+    BOOST_CHECK(info[0].state == process::State::STOPPED || info[0].state == process::State::STOPPING);
 
     fs::remove("/tmp/test_integration_socket_7.sock");
     fs::remove("/tmp/test_integration_7.log");

@@ -4,8 +4,10 @@
 #include <fstream>
 #include <filesystem>
 
-using namespace supervisord::config;
+using namespace supervisorcpp::config;
 namespace fs = std::filesystem;
+
+using supervisorcpp::logger::LogLevel;
 
 BOOST_AUTO_TEST_SUITE(ConfigParserTests)
 
@@ -156,6 +158,8 @@ BOOST_AUTO_TEST_CASE(TestParseSizeStrings) {
 }
 
 BOOST_AUTO_TEST_CASE(TestParseLogLevel) {
+    using supervisorcpp::logger::parse_log_level;
+
     BOOST_CHECK(parse_log_level("debug") == LogLevel::DEBUG);
     BOOST_CHECK(parse_log_level("info") == LogLevel::INFO);
     BOOST_CHECK(parse_log_level("warn") == LogLevel::WARN);

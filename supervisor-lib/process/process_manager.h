@@ -1,4 +1,6 @@
 #pragma once
+#ifndef SUPERVISOR_LIB__PROCESS__PROCESS_MANAGER
+#define SUPERVISOR_LIB__PROCESS__PROCESS_MANAGER
 
 #include "process.h"
 #include "../config/config_types.h"
@@ -8,8 +10,7 @@
 #include <map>
 #include <string>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::process {
 
 /**
  * Manages all supervised processes
@@ -20,7 +21,6 @@ public:
                             std::chrono::milliseconds update_interval = std::chrono::seconds(1));
     ~ProcessManager();
 
-    // Disable copy and move
     ProcessManager(const ProcessManager&) = delete;
     ProcessManager& operator=(const ProcessManager&) = delete;
     ProcessManager(ProcessManager&&) = delete;
@@ -91,7 +91,7 @@ private:
     /**
      * Handle SIGCHLD signal
      */
-    void handle_sigchld();
+    void handle_sigchld_();
 
     /**
      * Setup periodic timer for process updates
@@ -122,5 +122,6 @@ private:
     std::chrono::milliseconds update_interval_;
 };
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::process
+
+#endif // SUPERVISOR_LIB__PROCESS__PROCESS_MANAGER

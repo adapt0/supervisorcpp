@@ -1,7 +1,8 @@
 #include "process.h"
-#include "setup.h"
-#include "../util/logger.h"
+#include "../logger/log_writer.h"
+#include "../logger/logger.h"
 #include "../util/platform.h"
+#include "../util/secure.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
@@ -16,21 +17,34 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::process {
+
+std::ostream& operator<<(std::ostream& outs, State state) {
+    switch (state) {
+    case State::STOPPED: return outs << "STOPPED";
+    case State::STARTING: return outs << "STARTING";
+    case State::RUNNING: return outs << "RUNNING";
+    case State::BACKOFF: return outs << "BACKOFF";
+    case State::STOPPING: return outs << "STOPPING";
+    case State::EXITED: return outs << "EXITED";
+    case State::FATAL: return outs << "FATAL";
+    }
+    return outs << "Unknown (" << static_cast<int>(state) << ')';
+}
+
 
 Process::Process(boost::asio::io_context& io_context, const config::ProgramConfig& config)
-    : config_(config)
-    , io_context_(io_context)
-    , state_(config::ProcessState::STOPPED)
-    , pid_(-1)
-    , exitstatus_(0)
-    , retry_count_(0)
-    , state_change_time_(std::chrono::steady_clock::now())
+: config_(config)
+, io_context_(io_context)
+, state_(State::STOPPED)
+, pid_(-1)
+, exitstatus_(0)
+, retry_count_(0)
+, state_change_time_(std::chrono::steady_clock::now())
 {
     // Create log writer if logging is configured
     if (config_.stdout_logfile.has_value()) {
-        log_writer_ = std::make_unique<LogWriter>(
+        log_writer_ = std::make_unique<logger::LogWriter>(
             *config_.stdout_logfile,
             config_.stdout_logfile_maxbytes,
             config_.stdout_logfile_backups
@@ -53,13 +67,11 @@ Process::~Process() {
     }
 
     // Close log writer
-    if (log_writer_) {
-        log_writer_->close();
-    }
+    if (log_writer_) log_writer_.reset();
 }
 
 bool Process::start() {
-    if (state_ == config::ProcessState::RUNNING || state_ == config::ProcessState::STARTING) {
+    if (state_ == State::RUNNING || state_ == State::STARTING) {
         LOG_WARN << "Process '" << config_.name << "' already running or starting";
         return false;
     }
@@ -74,31 +86,31 @@ bool Process::start() {
         if (retry_count_ >= config_.startretries) {
             LOG_ERROR << "Process '" << config_.name << "' failed to start after "
                      << retry_count_ << " retries, entering FATAL state";
-            set_state(config::ProcessState::FATAL);
+            set_state(State::FATAL);
         } else {
             LOG_INFO << "Process '" << config_.name << "' will retry starting (attempt "
                     << retry_count_ + 1 << " of " << config_.startretries << ")";
-            set_state(config::ProcessState::BACKOFF);
+            set_state(State::BACKOFF);
         }
         return false;
     }
 
     pid_ = child_pid;
     start_time_ = std::chrono::steady_clock::now();
-    set_state(config::ProcessState::STARTING);
+    set_state(State::STARTING);
 
     LOG_INFO << "Process '" << config_.name << "' started with pid " << pid_;
     return true;
 }
 
 bool Process::stop() {
-    if (pid_ <= 0 || state_ == config::ProcessState::STOPPED) {
+    if (pid_ <= 0 || state_ == State::STOPPED) {
         LOG_WARN << "Process '" << config_.name << "' not running";
         return false;
     }
 
     LOG_INFO << "Stopping process '" << config_.name << "' (pid " << pid_ << ")";
-    set_state(config::ProcessState::STOPPING);
+    set_state(State::STOPPING);
     stop_time_ = std::chrono::steady_clock::now();
 
     // Send stop signal (default SIGTERM)
@@ -130,7 +142,7 @@ void Process::kill() {
     waitpid(pid_, &status, 0);
 
     pid_ = -1;
-    set_state(config::ProcessState::STOPPED);
+    set_state(State::STOPPED);
 }
 
 void Process::on_exit(int exit_status) {
@@ -151,9 +163,9 @@ void Process::on_exit(int exit_status) {
     pid_ = -1;
 
     // Handle state transitions
-    if (state_ == config::ProcessState::STOPPING) {
+    if (state_ == State::STOPPING) {
         // Normal stop
-        set_state(config::ProcessState::STOPPED);
+        set_state(State::STOPPED);
         retry_count_ = 0;  // Reset retry count on clean stop
     } else if (should_autorestart()) {
         // Unexpected exit with autorestart
@@ -163,13 +175,13 @@ void Process::on_exit(int exit_status) {
         if (retry_count_ >= config_.startretries) {
             LOG_ERROR << "Process '" << config_.name << "' failed after "
                      << retry_count_ << " retries, entering FATAL state";
-            set_state(config::ProcessState::FATAL);
+            set_state(State::FATAL);
         } else {
-            set_state(config::ProcessState::BACKOFF);
+            set_state(State::BACKOFF);
         }
     } else {
         // Exit without autorestart
-        set_state(config::ProcessState::EXITED);
+        set_state(State::EXITED);
     }
 }
 
@@ -178,16 +190,16 @@ void Process::update() {
     auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - state_change_time_).count();
 
     switch (state_) {
-        case config::ProcessState::STARTING:
+        case State::STARTING:
             // Check if process has been running long enough to be considered "started"
             if (elapsed >= config_.startsecs) {
                 LOG_INFO << "Process '" << config_.name << "' successfully started";
-                set_state(config::ProcessState::RUNNING);
+                set_state(State::RUNNING);
                 retry_count_ = 0;  // Reset retry count on successful start
             }
             break;
 
-        case config::ProcessState::STOPPING:
+        case State::STOPPING:
             // Check if we need to SIGKILL after timeout
             if (elapsed >= config_.stopwaitsecs) {
                 LOG_WARN << "Process '" << config_.name << "' did not stop gracefully, sending SIGKILL";
@@ -195,7 +207,7 @@ void Process::update() {
             }
             break;
 
-        case config::ProcessState::BACKOFF:
+        case State::BACKOFF:
             // Wait a bit before retrying (exponential backoff could be added here)
             if (elapsed >= 1) {  // Wait 1 second before retry
                 LOG_INFO << "Retrying start of process '" << config_.name << "'";
@@ -209,21 +221,20 @@ void Process::update() {
 }
 
 ProcessInfo Process::get_info() const {
-    ProcessInfo info;
-    info.name = config_.name;
-    info.group = config_.name;  // No groups in minimal version
-    info.state = state_;
-    info.state_code = static_cast<int>(state_);
-    info.pid = pid_;
-    info.exitstatus = exitstatus_;
-    info.stdout_logfile = config_.stdout_logfile.has_value() ? config_.stdout_logfile->string() : "";
-    info.stderr_logfile = "";  // We redirect stderr to stdout
-    info.spawnerr = spawn_error_;
+    ProcessInfo info{
+        .name = config_.name,
+        .state = state_,
+        .pid = pid_,
+        .exitstatus = exitstatus_,
+        .stdout_logfile = config_.stdout_logfile.has_value() ? config_.stdout_logfile->string() : "",
+        .stderr_logfile = "",  // We redirect stderr to stdout
+        .spawnerr = spawn_error_
+    };
 
     const auto now_time = std::chrono::system_clock::now();
     info.now = std::chrono::system_clock::to_time_t(now_time);
 
-    if (state_ == config::ProcessState::RUNNING || state_ == config::ProcessState::STARTING) {
+    if (state_ == State::RUNNING || state_ == State::STARTING) {
         const auto start_sys = std::chrono::time_point_cast<std::chrono::seconds>(
             std::chrono::system_clock::now() -
             (std::chrono::steady_clock::now() - start_time_)
@@ -247,7 +258,7 @@ ProcessInfo Process::get_info() const {
 }
 
 int Process::get_uptime() const {
-    if (state_ != config::ProcessState::RUNNING && state_ != config::ProcessState::STARTING) {
+    if (state_ != State::RUNNING && state_ != State::STARTING) {
         return 0;
     }
 
@@ -378,7 +389,7 @@ void Process::setup_child_process() {
     // SECURITY: Close all inherited file descriptors (except stdin/stdout/stderr)
     // This prevents child from accessing parent's sockets, log files, etc.
     // Must be called AFTER stdio redirection in spawn()
-    process::close_inherited_fds();
+    util::close_inherited_fds();
 
     // Setup working directory
     if (!setup_working_directory()) {
@@ -451,8 +462,8 @@ bool Process::switch_user() {
 
     // SECURITY: Verify privilege drop was successful
     try {
-        process::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
-    } catch (const SecurityError& e) {
+        util::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
+    } catch (const util::SecurityError& e) {
         LOG_ERROR << "Privilege drop verification failed: " << e.what();
         return false;
     }
@@ -516,10 +527,9 @@ std::vector<std::string> Process::parse_command() const {
     return args;
 }
 
-void Process::set_state(config::ProcessState new_state) {
+void Process::set_state(State new_state) {
     if (new_state != state_) {
-        LOG_DEBUG << "Process '" << config_.name << "' state: "
-                 << static_cast<int>(state_) << " -> " << static_cast<int>(new_state);
+        LOG_DEBUG << "Process '" << config_.name << "' " << state_ << " -> " << new_state;
         state_ = new_state;
         state_change_time_ = std::chrono::steady_clock::now();
     }
@@ -538,12 +548,12 @@ void Process::start_stdout_read() {
     stdout_stream_->async_read_some(
         boost::asio::buffer(stdout_buffer_),
         [this](const boost::system::error_code& error, size_t bytes_transferred) {
-            handle_stdout_read(error, bytes_transferred);
+            handle_stdout_read_(error, bytes_transferred);
         }
     );
 }
 
-void Process::handle_stdout_read(const boost::system::error_code& error, size_t bytes_transferred) {
+void Process::handle_stdout_read_(const boost::system::error_code& error, size_t bytes_transferred) {
     if (error) {
         if (error == boost::asio::error::eof) {
             // End of stream - process closed stdout
@@ -576,5 +586,4 @@ void Process::handle_stdout_read(const boost::system::error_code& error, size_t 
     start_stdout_read();
 }
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::process

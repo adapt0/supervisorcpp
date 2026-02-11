@@ -1,5 +1,5 @@
 #include "config/config_parser.h"
-#include "util/logger.h"
+#include "logger/logger.h"
 #include "process/process_manager.h"
 #include "rpc/rpc_server.h"
 #include <boost/program_options.hpp>
@@ -7,11 +7,12 @@
 #include <iostream>
 #include <csignal>
 
-namespace po = boost::program_options;
-using namespace supervisord;
-
 int supervisord_main(int argc, char* argv[]) {
+    using namespace supervisorcpp;
+
     try {
+        namespace po = boost::program_options;
+
         // Parse command line options
         po::options_description desc("supervisord - process control system");
         desc.add_options()
@@ -44,7 +45,7 @@ int supervisord_main(int argc, char* argv[]) {
         config::Configuration config = config::ConfigParser::parse_file(config_file);
 
         // Initialize logging
-        util::init_logging(config.supervisord.logfile, config.supervisord.loglevel);
+        logger::init_logging(config.supervisord.logfile, config.supervisord.loglevel);
 
         LOG_INFO << "supervisord starting (C++ version 0.1.0)";
         LOG_INFO << "Configuration file: " << config_file;
@@ -69,7 +70,9 @@ int supervisord_main(int argc, char* argv[]) {
 
         // Setup signal handlers for SIGTERM and SIGINT
         boost::asio::signal_set signals(io_context, SIGTERM, SIGINT);
-        signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
+        signals.async_wait([
+            &io_context, &process_manager
+        ](const boost::system::error_code& error, int signal_number) {
             if (!error) {
                 LOG_INFO << "Received shutdown signal (" << signal_number << ")";
                 process_manager.stop_all();
@@ -82,8 +85,8 @@ int supervisord_main(int argc, char* argv[]) {
 
         // Create and start RPC server
         LOG_INFO << "Starting RPC server";
-        rpc::RpcServer rpc_server(io_context, config.unix_http_server.socket_file.string(), process_manager);
-        rpc_server.start();
+        const auto rpc_server_ptr = rpc::RpcServer::create(io_context, config.unix_http_server.socket_file.string(), process_manager);
+        rpc_server_ptr->start();
 
         // Start all processes
         LOG_INFO << "Starting all configured processes";
@@ -98,10 +101,10 @@ int supervisord_main(int argc, char* argv[]) {
         io_context.run();
 
         // Stop RPC server
-        rpc_server.stop();
+        rpc_server_ptr->stop();
 
         LOG_INFO << "supervisord shutting down";
-        util::shutdown_logging();
+        logger::shutdown_logging();
 
         return 0;
 

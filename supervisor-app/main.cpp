@@ -5,35 +5,34 @@
  * - supervisord: Run as daemon (default)
  * - supervisorctl: Run as controller client
  *
- * This follows the busybox pattern used in Alpine Linux.
+ * Consistent with the busybox pattern
  */
 
 #include <filesystem>
 #include <string>
 #include <cstring>
 
-// Forward declarations for mode entry points
 int supervisord_main(int argc, char* argv[]);
 int supervisorctl_main(int argc, char* argv[]);
 
 int main(int argc, char* argv[]) {
-    // Get the basename of argv[0] to determine mode
-    std::filesystem::path program_path(argv[0]);
-    std::string program_name = program_path.filename().string();
+    // run as supervisord by default
+    bool as_supervisorctl = false;
+    int arg_ofs = 0;
 
-    // Check if invoked as supervisorctl
-    if (program_name == "supervisorctl" || program_name == "supervisorctl.cpp") {
-        return supervisorctl_main(argc, argv);
-    }
-
-    // Also support explicit mode selection via first argument
-    if (argc > 1) {
+    const auto program_name = std::filesystem::path{argv[0]}.filename().string();
+    if (program_name == "supervisorctl") {
+        as_supervisorctl = true; // invoked as supervisorctl
+    } else if (argc > 1) {
+        // Also support explicit mode selection via first argument
         if (std::strcmp(argv[1], "ctl") == 0 || std::strcmp(argv[1], "supervisorctl") == 0) {
-            // Shift arguments to remove mode selector
-            return supervisorctl_main(argc - 1, argv + 1);
+            arg_ofs = 1; // shift arguments to remove mode selector
+            as_supervisorctl = true;
         }
     }
 
-    // Default: run as supervisord
-    return supervisord_main(argc, argv);
+    return (as_supervisorctl) 
+        ? supervisorctl_main(argc - arg_ofs, argv + arg_ofs)
+        : supervisord_main(argc, argv)
+    ;
 }

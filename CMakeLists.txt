@@ -11,6 +11,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 
+STRING(TOLOWER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_LOWER)
 if(NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE_LOWER MATCHES debug)
     # debug build
 else ()
@@ -27,20 +28,24 @@ find_package(Boost 1.84 REQUIRED COMPONENTS
 )
 
 # Create static library for easier testing
-add_library(supervisord_lib STATIC 
+add_library(supervisor_lib STATIC 
     supervisor-lib/config/config_parser.cpp
-    supervisor-lib/config/validation.cpp
+    supervisor-lib/logger/log_levels.cpp
+    supervisor-lib/logger/log_writer.cpp
+    supervisor-lib/logger/logger.cpp
     supervisor-lib/process/process.cpp
     supervisor-lib/process/process_manager.cpp
-    supervisor-lib/process/log_writer.cpp
+    supervisor-lib/rpc/rpc_connection.cpp
     supervisor-lib/rpc/rpc_server.cpp
-    supervisor-lib/util/logger.cpp
+    supervisor-lib/rpc/xmlrpc.cpp
     supervisor-lib/util/platform.cpp
+    supervisor-lib/util/secure.cpp
+    supervisor-lib/util/string.cpp
 )
-target_include_directories(supervisord_lib PUBLIC
+target_include_directories(supervisor_lib PUBLIC
     ${CMAKE_SOURCE_DIR}/supervisor-lib
 )
-target_link_libraries(supervisord_lib PUBLIC
+target_link_libraries(supervisor_lib PUBLIC
     Boost::headers
     Boost::log
     Boost::log_setup
@@ -53,7 +58,7 @@ add_executable(supervisor
     supervisor-app/supervisord.cpp
     supervisor-app/supervisorctl.cpp
 )
-target_link_libraries(supervisor PRIVATE supervisord_lib)
+target_link_libraries(supervisor PRIVATE supervisor_lib)
 
 # Create symlinks in build directory for testing/development
 add_custom_command(TARGET supervisor POST_BUILD
@@ -76,7 +81,7 @@ add_executable(config_test
     tests/config/config_parser_test.cpp
 )
 target_link_libraries(config_test PRIVATE
-    supervisord_lib
+    supervisor_lib
     Boost::unit_test_framework
 )
 
@@ -85,18 +90,8 @@ add_executable(parser_robustness_test
     tests/config/parser_robustness_test.cpp
 )
 target_link_libraries(parser_robustness_test PRIVATE
-    supervisord_lib
+    supervisor_lib
     Boost::unit_test_framework
-)
-
-# XML-RPC parser tests
-add_executable(xmlrpc_parser_test
-    tests/rpc/xmlrpc_parser_test.cpp
-)
-target_link_libraries(xmlrpc_parser_test PRIVATE
-    supervisord_lib
-    Boost::unit_test_framework
-    Boost::headers
 )
 
 # Integration tests
@@ -104,15 +99,35 @@ add_executable(integration_test
     tests/integration/integration_test.cpp
 )
 target_link_libraries(integration_test PRIVATE
-    supervisord_lib
+    supervisor_lib
     Boost::unit_test_framework
 )
+
+# XML-RPC tests
+add_executable(rpc_xml_test
+    tests/rpc/xmlrpc_test.cpp
+)
+target_link_libraries(rpc_xml_test PRIVATE
+    supervisor_lib
+    Boost::unit_test_framework
+)
+
+# string util tests
+add_executable(util_string_test
+    tests/util/string_test.cpp
+)
+target_link_libraries(util_string_test PRIVATE
+    supervisor_lib
+    Boost::unit_test_framework
+)
+
 
 # Register tests with CTest
 add_test(NAME ConfigParserTest COMMAND config_test)
 add_test(NAME ParserRobustnessTest COMMAND parser_robustness_test)
-add_test(NAME XmlRpcParserTest COMMAND xmlrpc_parser_test)
 add_test(NAME IntegrationTest COMMAND integration_test)
+add_test(NAME RpcXmlTest COMMAND rpc_xml_test)
+add_test(NAME UtilStringTest COMMAND util_string_test)
 
 # Install targets
 install(TARGETS supervisor

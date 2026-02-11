@@ -5,7 +5,7 @@
 #include <fstream>
 
 namespace fs = std::filesystem;
-using namespace supervisord::config;
+using namespace supervisorcpp::config;
 
 // Helper to create temporary test files
 class TempConfigFile {

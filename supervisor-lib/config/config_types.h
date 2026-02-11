@@ -1,46 +1,19 @@
 #pragma once
+#ifndef SUPERVISOR_LIB__PROCESS__CONFIG_TYPES
+#define SUPERVISOR_LIB__PROCESS__CONFIG_TYPES
 
-#include <string>
-#include <vector>
+#include "../logger/logger.h"
 #include <map>
 #include <optional>
-#include <filesystem>
-#include <algorithm>
-#include <iostream>
+#include <set>
 
-namespace supervisord {
-namespace config {
-
-/**
- * Log level enumeration
- */
-enum class LogLevel {
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR
-};
-
-/**
- * Process state enumeration (supervisord compatible)
- */
-enum class ProcessState {
-    STOPPED = 0,
-    STARTING = 10,
-    RUNNING = 20,
-    BACKOFF = 30,
-    STOPPING = 40,
-    EXITED = 100,
-    FATAL = 200
-};
+namespace supervisorcpp::config {
 
 /**
  * Parse size string (e.g., "10MB", "1GB") to bytes
  */
 inline size_t parse_size(const std::string& size_str) {
-    if (size_str.empty()) {
-        return 0;
-    }
+    if (size_str.empty()) return 0;
 
     size_t multiplier = 1;
     std::string num_str = size_str;
@@ -66,7 +39,7 @@ inline size_t parse_size(const std::string& size_str) {
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
 
-        if (trimmed.empty() || !std::all_of(trimmed.begin(), trimmed.end(), ::isdigit)) {
+        if (trimmed.empty() || !std::all_of(std::begin(trimmed), std::end(trimmed), ::isdigit)) {
             throw std::invalid_argument("Invalid size format: " + size_str);
         }
 
@@ -76,55 +49,6 @@ inline size_t parse_size(const std::string& size_str) {
     } catch (const std::out_of_range&) {
         throw std::invalid_argument("Size value out of range: " + size_str);
     }
-}
-
-/**
- * Parse log level from string
- */
-inline LogLevel parse_log_level(const std::string& level_str) {
-    std::string lower = level_str;
-    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-    if (lower == "debug") return LogLevel::DEBUG;
-    if (lower == "info") return LogLevel::INFO;
-    if (lower == "warn" || lower == "warning") return LogLevel::WARN;
-    if (lower == "error") return LogLevel::ERROR;
-
-    // Invalid log level
-    throw std::invalid_argument("Invalid log level: " + level_str);
-}
-
-/**
- * Validate signal name
- */
-inline void validate_signal(const std::string& signal_name) {
-    const std::vector<std::string> valid_signals = {
-        "TERM", "HUP", "INT", "QUIT", "KILL", "USR1", "USR2", "ABRT", "ALRM", "CONT", "STOP"
-    };
-
-    if (std::find(valid_signals.begin(), valid_signals.end(), signal_name) == valid_signals.end()) {
-        throw std::invalid_argument("Invalid signal name: " + signal_name);
-    }
-}
-
-/**
- * Convert log level to string
- */
-inline std::string log_level_to_string(LogLevel level) {
-    switch (level) {
-        case LogLevel::DEBUG: return "debug";
-        case LogLevel::INFO: return "info";
-        case LogLevel::WARN: return "warn";
-        case LogLevel::ERROR: return "error";
-        default: return "info";
-    }
-}
-
-/**
- * Output operator for LogLevel (for testing and debugging)
- */
-inline std::ostream& operator<<(std::ostream& os, LogLevel level) {
-    return os << log_level_to_string(level);
 }
 
 /**
@@ -141,7 +65,7 @@ struct UnixHttpServerConfig {
  */
 struct SupervisordConfig {
     std::filesystem::path logfile{"/var/log/supervisord.log"};
-    LogLevel loglevel{LogLevel::INFO};
+    logger::LogLevel loglevel{logger::LogLevel::INFO};
     std::string user{"root"};
     std::filesystem::path childlogdir{"/var/log/supervisor"};
 
@@ -207,6 +131,7 @@ struct Configuration {
     SupervisordConfig supervisord;
     SupervisorctlConfig supervisorctl;
     std::vector<ProgramConfig> programs;
+    std::set<std::string> included; ///< track included files (loop check)
 
     /**
      * Find a program by name
@@ -233,5 +158,6 @@ struct Configuration {
     }
 };
 
-} // namespace config
-} // namespace supervisord
+} // namespace supervisorcpp::config
+
+#endif // SUPERVISOR_LIB__PROCESS__CONFIG_TYPES

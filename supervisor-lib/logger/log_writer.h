@@ -1,12 +1,13 @@
 #pragma once
+#ifndef SUPERVISOR_LIB__LOGGER__LOG_WRITER
+#define SUPERVISOR_LIB__LOGGER__LOG_WRITER
 
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <mutex>
 
-namespace supervisord {
-namespace process {
+namespace supervisorcpp::logger {
 
 /**
  * Handles writing to log files with size-based rotation
@@ -51,11 +52,6 @@ public:
     void flush();
 
     /**
-     * Close the log file
-     */
-    void close();
-
-    /**
      * Get current file size
      */
     size_t current_size() const { return current_size_; }
@@ -69,24 +65,29 @@ private:
     /**
      * Open or reopen the log file
      */
-    bool open();
+    bool openNL_();
+
+    /**
+     * Close the log file
+     */
+    void closeNL_();
 
     /**
      * Rotate log files
      * Renames logfile -> logfile.1, logfile.1 -> logfile.2, etc.
      */
-    void rotate();
+    void rotateNL_();
 
     /**
      * Check if rotation is needed and rotate if necessary
      * Only rotates on line boundaries (after \n in buffer)
      */
-    void check_rotation();
+    void check_rotation_();
 
     /**
      * Ensure log directory exists
      */
-    bool ensure_directory();
+    bool ensure_directory_();
 
     // Configuration
     std::filesystem::path logfile_;
@@ -100,5 +101,6 @@ private:
     std::mutex mutex_;  // Thread safety
 };
 
-} // namespace process
-} // namespace supervisord
+} // namespace supervisorcpp::logger
+
+#endif // SUPERVISOR_LIB__LOGGER__LOG_WRITER

@@ -92,7 +92,7 @@ Stdout/stderr from child processes are captured via async pipes using `boost::as
 
 1. Add handler in `supervisor-app/supervisorctl.cpp`:
    ```cpp
-   void handle_mycommand(SupervisorctlClient& client, const std::vector<std::string>& args);
+   void handle_mycommand(SupervisorCtlClient& client, const std::vector<std::string>& args);
    ```
 
 2. Wire it in `execute_command()`:
