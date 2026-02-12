@@ -12,6 +12,7 @@
 
 #define BOOST_TEST_MODULE IntegrationTest
 #include <boost/test/unit_test.hpp>
+#include "../test_util.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
 #include "process/process_manager.h"
@@ -25,30 +26,7 @@ namespace fs = std::filesystem;
 using namespace supervisorcpp;
 using namespace std::chrono_literals;
 
-// Helper to create test config files
-class TempTestConfig {
-public:
-    TempTestConfig(const std::string& content) {
-        path_ = fs::temp_directory_path() / ("test_integration_" + std::to_string(counter_++) + ".ini");
-        std::ofstream file(path_);
-        file << content;
-        file.close();
-    }
-
-    ~TempTestConfig() {
-        if (fs::exists(path_)) {
-            fs::remove(path_);
-        }
-    }
-
-    fs::path path() const { return path_; }
-
-private:
-    fs::path path_;
-    static int counter_;
-};
-
-int TempTestConfig::counter_ = 0;
+using TempManager = test_util::TempManager;
 
 // Run io_context until condition is met or timeout expires.
 // Returns true if condition was met, false on timeout.
@@ -105,25 +83,24 @@ BOOST_AUTO_TEST_SUITE(IntegrationTests)
 BOOST_AUTO_TEST_CASE(ProcessExitsImmediately) {
     const std::string BIN_TRUE = std::filesystem::exists("/usr/bin/true") ? "/usr/bin/true" : "/bin/true";
 
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_1.sock");
+    const auto log1 = TempManager::file("supervisord_1.log");
+    const auto log2 = TempManager::file("exit_immediately.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_1.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_1.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_1.sock
+logfile=)" + log1.str() + R"(
 
 [program:exit_immediately]
 command=)" + BIN_TRUE + R"(
 autorestart=false
 startsecs=1
-stdout_logfile=/tmp/test_exit_immediately.log
-)";
+stdout_logfile=)" + log2.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -134,39 +111,34 @@ stdout_logfile=/tmp/test_exit_immediately.log
 
     pm.start_all();
 
-    BOOST_CHECK( 
+    BOOST_CHECK(
         poll_until(io_context, [&pm] {
             auto info = pm.get_all_process_info();
             return !info.empty() && (info[0].state == process::State::EXITED || info[0].state == process::State::FATAL);
         })
     );
-
-    fs::remove("/tmp/test_integration_socket_1.sock");
-    fs::remove("/tmp/test_integration_1.log");
-    fs::remove("/tmp/test_exit_immediately.log");
 }
 
 // Test 2: Process start/stop/restart cycle
 BOOST_AUTO_TEST_CASE(ProcessStartStopRestart) {
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_2.sock");
+    const auto log1 = TempManager::file("supervisord_2.log");
+    const auto log2 = TempManager::file("long_running.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_2.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_2.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_2.sock
+logfile=)" + log1.str() + R"(
 
 [program:long_running]
 command=/bin/sleep 60
 autorestart=false
 startsecs=1
-stdout_logfile=/tmp/test_long_running.log
-)";
+stdout_logfile=)" + log2.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -189,42 +161,39 @@ stdout_logfile=/tmp/test_long_running.log
 
     pm.stop_all();
     BOOST_CHECK(poll_until_state(io_context, pm, process::State::STOPPED));
-
-    fs::remove("/tmp/test_integration_socket_2.sock");
-    fs::remove("/tmp/test_integration_2.log");
-    fs::remove("/tmp/test_long_running.log");
 }
 
 // Test 3: Multiple processes managed simultaneously
 BOOST_AUTO_TEST_CASE(MultipleProcesses) {
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_3.sock");
+    const auto log1 = TempManager::file("supervisord_3.log");
+    const auto log2 = TempManager::file("proc1.log");
+    const auto log3 = TempManager::file("proc2.log");
+    const auto log4 = TempManager::file("proc3.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_3.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_3.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_3.sock
+logfile=)" + log1.str() + R"(
 
 [program:proc1]
 command=/bin/sleep 10
 autorestart=false
-stdout_logfile=/tmp/test_proc1.log
+stdout_logfile=)" + log2.str() + R"(
 
 [program:proc2]
 command=/bin/sleep 10
 autorestart=false
-stdout_logfile=/tmp/test_proc2.log
+stdout_logfile=)" + log3.str() + R"(
 
 [program:proc3]
 command=/bin/sleep 10
 autorestart=false
-stdout_logfile=/tmp/test_proc3.log
-)";
+stdout_logfile=)" + log4.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -239,38 +208,31 @@ stdout_logfile=/tmp/test_proc3.log
 
     pm.stop_all();
     BOOST_CHECK(poll_until_state(io_context, pm, process::State::STOPPED));
-
-    fs::remove("/tmp/test_integration_socket_3.sock");
-    fs::remove("/tmp/test_integration_3.log");
-    fs::remove("/tmp/test_proc1.log");
-    fs::remove("/tmp/test_proc2.log");
-    fs::remove("/tmp/test_proc3.log");
 }
 
 // Test 4: Autorestart with failing process
 BOOST_AUTO_TEST_CASE(AutorestartFailingProcess) {
     const std::string BIN_FALSE = std::filesystem::exists("/usr/bin/false") ? "/usr/bin/false" : "/bin/false";
 
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_4.sock");
+    const auto log1 = TempManager::file("supervisord_4.log");
+    const auto log2 = TempManager::file("fail_fast.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_4.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_4.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_4.sock
+logfile=)" + log1.str() + R"(
 
 [program:fail_fast]
 command=)" + BIN_FALSE + R"(
 autorestart=true
 startsecs=1
 startretries=3
-stdout_logfile=/tmp/test_fail_fast.log
-)";
+stdout_logfile=)" + log2.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -283,33 +245,28 @@ stdout_logfile=/tmp/test_fail_fast.log
 
     // Retries with backoff may take a few seconds
     BOOST_CHECK( poll_until_state(io_context, pm, process::State::FATAL, 10000ms) );
-
-    fs::remove("/tmp/test_integration_socket_4.sock");
-    fs::remove("/tmp/test_integration_4.log");
-    fs::remove("/tmp/test_fail_fast.log");
 }
 
 // Test 5: Log capture validation
 BOOST_AUTO_TEST_CASE(LogCaptureValidation) {
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_5.sock");
+    const auto log1 = TempManager::file("supervisord_5.log");
+    const auto log2 = TempManager::file("echo.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_5.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_5.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_5.sock
+logfile=)" + log1.str() + R"(
 
 [program:echo_test]
 command=/bin/sh -c "echo 'Hello from process'; sleep 2; echo 'Goodbye from process'"
 autorestart=false
 startsecs=0
-stdout_logfile=/tmp/test_echo.log
-)";
+stdout_logfile=)" + log2.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -321,51 +278,40 @@ stdout_logfile=/tmp/test_echo.log
     pm.start_all();
 
     // Process itself takes ~2s (has sleep 2), poll until log has final output
-    bool reached = poll_until(io_context, [] {
-        if (!fs::exists("/tmp/test_echo.log")) return false;
-        std::ifstream log("/tmp/test_echo.log");
-        std::string content((std::istreambuf_iterator<char>(log)),
-                           std::istreambuf_iterator<char>());
+    const auto& echo_log = log2.path();
+    const bool reached = poll_until(io_context, [&echo_log] {
+        const auto content = test_util::read_file(echo_log);
         return content.find("Goodbye from process") != std::string::npos;
     }, 10000ms);
 
     BOOST_CHECK(reached);
 
-    if (fs::exists("/tmp/test_echo.log")) {
-        std::ifstream log("/tmp/test_echo.log");
-        std::string content((std::istreambuf_iterator<char>(log)),
-                           std::istreambuf_iterator<char>());
-        BOOST_CHECK(content.find("Hello from process") != std::string::npos);
-        BOOST_CHECK(content.find("Goodbye from process") != std::string::npos);
-    }
-
-    fs::remove("/tmp/test_integration_socket_5.sock");
-    fs::remove("/tmp/test_integration_5.log");
-    fs::remove("/tmp/test_echo.log");
+    const auto content = test_util::read_file(echo_log);
+    BOOST_CHECK(content.find("Hello from process") != std::string::npos);
+    BOOST_CHECK(content.find("Goodbye from process") != std::string::npos);
 }
 
 // Test 6: Process with working directory
 BOOST_AUTO_TEST_CASE(ProcessWithWorkingDirectory) {
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_6.sock");
+    const auto log1 = TempManager::file("supervisord_6.log");
+    const auto log2 = TempManager::file("pwd.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_6.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_6.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_6.sock
+logfile=)" + log1.str() + R"(
 
 [program:pwd_test]
 command=/bin/sh -c "pwd"
 directory=/tmp
 autorestart=false
 startsecs=0
-stdout_logfile=/tmp/test_pwd.log
-)";
+stdout_logfile=)" + log2.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -376,49 +322,39 @@ stdout_logfile=/tmp/test_pwd.log
 
     pm.start_all();
 
-    bool reached = poll_until(io_context, [] {
-        if (!fs::exists("/tmp/test_pwd.log")) return false;
-        std::ifstream log("/tmp/test_pwd.log");
-        std::string content((std::istreambuf_iterator<char>(log)),
-                           std::istreambuf_iterator<char>());
+    const auto& pwd_log = log2.path();
+    const bool reached = poll_until(io_context, [&pwd_log] {
+        if (!fs::exists(pwd_log)) return false;
+        const auto content = test_util::read_file(pwd_log);
         return content.find("/tmp") != std::string::npos;
     });
 
     BOOST_CHECK(reached);
 
-    if (fs::exists("/tmp/test_pwd.log")) {
-        std::ifstream log("/tmp/test_pwd.log");
-        std::string content((std::istreambuf_iterator<char>(log)),
-                           std::istreambuf_iterator<char>());
-        BOOST_CHECK(content.find("/tmp") != std::string::npos);
-    }
-
-    fs::remove("/tmp/test_integration_socket_6.sock");
-    fs::remove("/tmp/test_integration_6.log");
-    fs::remove("/tmp/test_pwd.log");
+    const auto content = test_util::read_file(pwd_log);
+    BOOST_CHECK(content.find("/tmp") != std::string::npos);
 }
 
 // Test 7: Rapid start/stop cycles (stress test)
 BOOST_AUTO_TEST_CASE(RapidStartStopCycles) {
-    std::string config = R"(
+    const auto sock = TempManager::file("sock_7.sock");
+    const auto log1 = TempManager::file("supervisord_7.log");
+    const auto log2 = TempManager::file("rapid.log");
+
+    const auto cfg = TempManager::config(R"(
 [unix_http_server]
-file=/tmp/test_integration_socket_7.sock
+file=)" + sock.str() + R"(
 
 [supervisord]
-logfile=/tmp/test_integration_7.log
-
-[supervisorctl]
-serverurl=unix:///tmp/test_integration_socket_7.sock
+logfile=)" + log1.str() + R"(
 
 [program:rapid_test]
 command=/bin/sleep 30
 autorestart=false
 startsecs=1
-stdout_logfile=/tmp/test_rapid.log
-)";
+stdout_logfile=)" + log1.str() + "\n");
 
-    TempTestConfig temp(config);
-    auto parsed_config = config::ConfigParser::parse_file(temp.path());
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
 
     boost::asio::io_context io_context;
     process::ProcessManager pm(io_context, 100ms);
@@ -445,10 +381,6 @@ stdout_logfile=/tmp/test_rapid.log
     const auto info = pm.get_all_process_info();
     BOOST_REQUIRE_EQUAL(info.size(), 1);
     BOOST_CHECK(info[0].state == process::State::STOPPED || info[0].state == process::State::STOPPING);
-
-    fs::remove("/tmp/test_integration_socket_7.sock");
-    fs::remove("/tmp/test_integration_7.log");
-    fs::remove("/tmp/test_rapid.log");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

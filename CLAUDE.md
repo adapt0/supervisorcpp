@@ -5,12 +5,11 @@ Minimal supervisord replacement in C++23 for Alpine Linux (musl libc). Single Bo
 ## Build & Test
 
 ```bash
-cd build && cmake .. && make -j$(nproc)
+cd build && cmake .. -G Ninja && ninja -j$(nproc)
 ctest --output-on-failure
 ```
 
-Tests: config parsing, parser robustness, XML-RPC parsing, integration
-Integration tests start a real supervisord instance — they need test configs in `tests/data/`.
+Prefer **Ninja** over Make — it's faster and already available in the build environment.
 
 ## Code Organization
 
@@ -28,10 +27,19 @@ supervisor-app/           # Busybox-style multi-call binary
 
 tests/
   config/                 # Config parser unit + robustness tests
-  rpc/                    # XML-RPC parser tests
+  rpc/                    # XML-RPC, dispatch, connection tests
+  util/                   # String + security utility tests
+  logger/                 # LogWriter tests
   integration/            # Full lifecycle integration tests
   data/                   # Test .ini config files
 ```
+
+## Testing
+
+- **Quality over quantity** — prefer consolidated, easy-to-maintain tests over many boilerplate-heavy ones. A single well-structured test that writes, reads back, checks size, and flushes is better than four separate tests with duplicated setup.
+- **Boost.Test** framework with `BOOST_AUTO_TEST_CASE` / `BOOST_FIXTURE_TEST_CASE`
+- New tests: one `add_unit_test()` call in CMakeLists.txt (single source file per executable)
+- Integration tests start a real supervisord instance — they need test configs in `tests/data/`
 
 ## Key Conventions
 

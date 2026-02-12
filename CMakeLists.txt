@@ -76,58 +76,22 @@ enable_testing()
 # Copy test data to build directory (fixes ownership for root-owned validation)
 file(COPY tests/data DESTINATION ${CMAKE_BINARY_DIR}/tests)
 
-# Unit tests
-add_executable(config_test
-    tests/config/config_parser_test.cpp
-)
-target_link_libraries(config_test PRIVATE
-    supervisor_lib
-    Boost::unit_test_framework
-)
+# Helper: define a test executable from a single source file
+function(add_unit_test TARGET_NAME SOURCE_FILE)
+    add_executable(${TARGET_NAME} ${SOURCE_FILE})
+    target_link_libraries(${TARGET_NAME} PRIVATE supervisor_lib Boost::unit_test_framework)
+    add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
+endfunction()
 
-# Parser robustness tests
-add_executable(parser_robustness_test
-    tests/config/parser_robustness_test.cpp
-)
-target_link_libraries(parser_robustness_test PRIVATE
-    supervisor_lib
-    Boost::unit_test_framework
-)
-
-# Integration tests
-add_executable(integration_test
-    tests/integration/integration_test.cpp
-)
-target_link_libraries(integration_test PRIVATE
-    supervisor_lib
-    Boost::unit_test_framework
-)
-
-# XML-RPC tests
-add_executable(rpc_xml_test
-    tests/rpc/xmlrpc_test.cpp
-)
-target_link_libraries(rpc_xml_test PRIVATE
-    supervisor_lib
-    Boost::unit_test_framework
-)
-
-# string util tests
-add_executable(util_string_test
-    tests/util/string_test.cpp
-)
-target_link_libraries(util_string_test PRIVATE
-    supervisor_lib
-    Boost::unit_test_framework
-)
-
-
-# Register tests with CTest
-add_test(NAME ConfigParserTest COMMAND config_test)
-add_test(NAME ParserRobustnessTest COMMAND parser_robustness_test)
-add_test(NAME IntegrationTest COMMAND integration_test)
-add_test(NAME RpcXmlTest COMMAND rpc_xml_test)
-add_test(NAME UtilStringTest COMMAND util_string_test)
+add_unit_test(config_test              tests/config/config_parser_test.cpp)
+add_unit_test(parser_robustness_test   tests/config/parser_robustness_test.cpp)
+add_unit_test(integration_test         tests/integration/integration_test.cpp)
+add_unit_test(rpc_xml_test             tests/rpc/xmlrpc_test.cpp)
+add_unit_test(util_string_test         tests/util/string_test.cpp)
+add_unit_test(util_secure_test         tests/util/secure_test.cpp)
+add_unit_test(log_writer_test          tests/logger/log_writer_test.cpp)
+add_unit_test(rpc_dispatch_test        tests/rpc/rpc_dispatch_test.cpp)
+add_unit_test(rpc_connection_test      tests/rpc/rpc_connection_test.cpp)
 
 # Install targets
 install(TARGETS supervisor

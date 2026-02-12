@@ -1,11 +1,10 @@
 #include "secure.h"
-#include <filesystem>
-#include <string>
-#include <vector>
-#include <map>
 #include <algorithm>
-#include <iostream>
+#include <filesystem>
+#include <map>
+#include <string>
 #include <unistd.h>
+#include <vector>
 #include <sys/stat.h>
 
 namespace supervisorcpp::util {
@@ -69,11 +68,11 @@ void validate_config_file_security(const fs::path& config_file) {
         throw SecurityError("Config file must not be world-writable: " + config_file.string());
     }
 
-    // Should not be group-writable for extra security
-    if (st.st_mode & S_IWGRP) {
-        // Warning but not fatal
-        std::cerr << "WARNING: Config file is group-writable: " + config_file.string() << std::endl;
-    }
+    // // Should not be group-writable for extra security
+    // if (st.st_mode & S_IWGRP) {
+    //     // Warning but not fatal
+    //     std::cerr << "WARNING: Config file is group-writable: " + config_file.string() << std::endl;
+    // }
 }
 
 fs::path validate_log_path(const fs::path& log_path) {
@@ -161,7 +160,7 @@ std::map<std::string, std::string> sanitize_environment(const std::map<std::stri
     for (const auto& [key, value] : env) {
         // Check if key is in dangerous list
         if (std::find(std::begin(dangerous), std::end(dangerous), key) != std::end(dangerous)) {
-            std::cerr << "WARNING: Filtering dangerous environment variable: " << key << std::endl;
+            // std::cerr << "WARNING: Filtering dangerous environment variable: " << key << std::endl;
             continue;
         }
 
@@ -171,13 +170,13 @@ std::map<std::string, std::string> sanitize_environment(const std::map<std::stri
         });
 
         if (!valid_key) {
-            std::cerr << "WARNING: Invalid environment variable name: " << key << std::endl;
+            // std::cerr << "WARNING: Invalid environment variable name: " << key << std::endl;
             continue;
         }
 
         // Validate value: no null bytes
         if (value.find('\0') != std::string::npos) {
-            std::cerr << "WARNING: Environment value contains null byte: " << key << std::endl;
+            // std::cerr << "WARNING: Environment value contains null byte: " << key << std::endl;
             continue;
         }
 
