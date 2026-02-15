@@ -40,13 +40,16 @@ BOOST_AUTO_TEST_CASE(secure__sanitize_environment) {
         {"MY_VAR", "value"},
     });
 
-    // Dangerous vars filtered
+    // LD_* and similar vars pass through (config file security is the trust boundary)
     sanitize({
-        {"LD_PRELOAD", "/evil.so"},
-        {"LD_LIBRARY_PATH", "/evil"},
-        {"DYLD_INSERT_LIBRARIES", "/evil.dylib"},
+        {"LD_PRELOAD", "/opt/lib/preload.so"},
+        {"LD_LIBRARY_PATH", "/opt/apps/lib"},
+        {"DYLD_INSERT_LIBRARIES", "/opt/lib/insert.dylib"},
         {"SAFE", "ok"},
     }, {
+        {"DYLD_INSERT_LIBRARIES", "/opt/lib/insert.dylib"},
+        {"LD_LIBRARY_PATH", "/opt/apps/lib"},
+        {"LD_PRELOAD", "/opt/lib/preload.so"},
         {"SAFE", "ok"},
     });
 

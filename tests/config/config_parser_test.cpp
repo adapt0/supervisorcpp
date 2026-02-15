@@ -120,8 +120,8 @@ stopsignal=INT
     BOOST_CHECK_EQUAL(prog.stopsignal, "INT");
 
     // Check environment parsing
-    // NOTE: LD_LIBRARY_PATH is filtered by security sanitization
-    BOOST_CHECK_EQUAL(prog.environment.size(), 1);
+    BOOST_CHECK_EQUAL(prog.environment.size(), 2);
+    BOOST_CHECK_EQUAL(prog.environment.at("LD_LIBRARY_PATH"), "/opt/apps/lib");
     BOOST_CHECK_EQUAL(prog.environment.at("DEBUG"), "1");
 }
 

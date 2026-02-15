@@ -51,7 +51,7 @@ void validate_signal(const std::string& signal_name);
 
 /**
  * Sanitize environment variables map
- * Removes dangerous variables and validates names/values
+ * Validates variable names (alphanumeric + underscore) and values (no null bytes)
  */
 std::map<std::string, std::string> sanitize_environment(const std::map<std::string, std::string>& env);
 

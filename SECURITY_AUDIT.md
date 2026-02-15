@@ -140,28 +140,22 @@ acceptor_.bind(endpoint);
 
 ### 5. Environment Variable Injection
 
-**Location**: `src/config/config_parser.cpp:parse_environment()`
+**Location**: `supervisor-lib/config/config_parser.cpp`, `supervisor-lib/util/secure.cpp`
 
-**Risk**: MEDIUM
-**Status**: ⚠️ PARTIALLY SAFE
+**Risk**: LOW
+**Status**: ✅ SAFE
 
-**Issue**:
-```cpp
-// Environment variables from config passed to child
-environment=LD_PRELOAD="/tmp/evil.so"
-```
+**Rationale**: Config file security (ownership by root, not world-writable) is the trust
+boundary. An attacker who can modify the config to inject a malicious `LD_PRELOAD` can
+equally modify the `command=` directive to run an arbitrary binary. Blocking environment
+variables at this layer adds no real security while preventing legitimate use cases
+(e.g. `LD_LIBRARY_PATH=/opt/apps/lib` for applications with custom library paths).
 
-**Attack Vector**:
-```ini
-[program:service]
-environment=LD_PRELOAD="/tmp/malicious.so",LD_LIBRARY_PATH="/tmp/evil"
-```
+**Implemented**:
 
-**Recommendations**:
-- Blacklist dangerous variables (LD_PRELOAD, LD_LIBRARY_PATH, etc.)
-- Whitelist approach for critical processes
-- Validate environment variable names (alphanumeric + underscore)
-- Sanitize values (no null bytes, control chars)
+- ✅ Validate environment variable names (alphanumeric + underscore only)
+- ✅ Reject values containing null bytes
+- ✅ Config file ownership and permission checks (`validate_config_file_security`)
 
 ---
 

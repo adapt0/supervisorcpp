@@ -142,28 +142,8 @@ void validate_signal(const std::string& signal_name) {
 }
 
 std::map<std::string, std::string> sanitize_environment(const std::map<std::string, std::string>& env) {
-    constexpr std::string_view dangerous[] = {
-        "LD_PRELOAD",
-        "LD_LIBRARY_PATH",
-        "LD_AUDIT",
-        "LD_DEBUG",
-        "DYLD_INSERT_LIBRARIES",  // macOS
-        "DYLD_LIBRARY_PATH",      // macOS
-        "PYTHONPATH",
-        "PERL5LIB",
-        "PERLLIB",
-        "RUBYLIB",
-        "GOPATH",
-    };
-
     std::map<std::string, std::string> sanitized;
     for (const auto& [key, value] : env) {
-        // Check if key is in dangerous list
-        if (std::find(std::begin(dangerous), std::end(dangerous), key) != std::end(dangerous)) {
-            // std::cerr << "WARNING: Filtering dangerous environment variable: " << key << std::endl;
-            continue;
-        }
-
         // Validate key: alphanumeric + underscore only
         const bool valid_key = !key.empty() && std::all_of(std::begin(key), std::end(key), [](char c) {
             return std::isalnum(c) || c == '_';
