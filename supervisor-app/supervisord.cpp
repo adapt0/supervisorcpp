@@ -38,8 +38,8 @@ int supervisord_main(int argc, char* argv[]) {
             return 0;
         }
 
-        std::string config_file = vm["config"].as<std::string>();
-        bool nodaemon = vm.count("nodaemon") > 0;
+        const auto config_file = vm["config"].as<std::string>();
+        const bool nodaemon = vm.count("nodaemon") > 0;
 
         // Load configuration
         std::cout << "Loading configuration from: " << config_file << std::endl;

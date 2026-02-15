@@ -10,7 +10,6 @@
 
 #include <filesystem>
 #include <string>
-#include <cstring>
 
 int supervisord_main(int argc, char* argv[]);
 int supervisorctl_main(int argc, char* argv[]);
@@ -25,7 +24,7 @@ int main(int argc, char* argv[]) {
         as_supervisorctl = true; // invoked as supervisorctl
     } else if (argc > 1) {
         // Also support explicit mode selection via first argument
-        if (std::strcmp(argv[1], "ctl") == 0 || std::strcmp(argv[1], "supervisorctl") == 0) {
+        if (argv[1] == std::string_view{"ctl"} || argv[1] == std::string_view{"supervisorctl"}) {
             arg_ofs = 1; // shift arguments to remove mode selector
             as_supervisorctl = true;
         }

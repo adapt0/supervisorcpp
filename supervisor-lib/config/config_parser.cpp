@@ -7,6 +7,8 @@
 #include <sstream>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+#include <boost/fusion/include/std_pair.hpp>
+#include <boost/spirit/include/qi.hpp>
 
 namespace supervisorcpp::config {
 
@@ -74,25 +76,31 @@ void ConfigParser::parse_single_file_(const std::filesystem::path& config_file, 
     try {
         std::ifstream ifs{config_file.string()};
         parse_stream_(ifs, config, config_file.parent_path(), depth);
+    } catch (const ConfigParseError&) {
+        throw;
+    } catch (const pt::file_parser_error& e) {
+        const auto line = e.line() > 0 ? "(" + std::to_string(e.line()) + ")" : "";
+        throw ConfigParseError(config_file.string() + line + ": " + e.message());
     } catch (const std::exception& e) {
-        throw ConfigParseError("INI parsing error in " + config_file.string() + ": " + e.what());
+        throw ConfigParseError(config_file.string() + ": " + e.what());
     }
 }
 
 Configuration ConfigParser::parse_string(const std::string& config_str) {
-    Configuration config;
-    std::istringstream iss(config_str);
     try {
+        Configuration config;
+        std::istringstream iss(config_str);
         parse_stream_(iss, config, std::filesystem::path{}, 0);
-    } catch (const pt::ini_parser_error& e) {
-        throw ConfigParseError("INI parsing error: " + std::string(e.what()));
+        validate_config_(config);
+        return config;
     } catch (const ConfigParseError&) {
-        throw; // Re-throw our own exceptions
+        throw;
+    } catch (const pt::file_parser_error& e) {
+        const auto line = e.line() > 0 ? " line " + std::to_string(e.line()) : "";
+        throw ConfigParseError("INI parsing error" + line + ": " + e.message());
     } catch (const std::exception& e) {
         throw ConfigParseError("Unexpected error: " + std::string(e.what()));
     }
-
-    return config;
 }
 
 void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const std::filesystem::path& base_dir, size_t depth) {
@@ -267,45 +275,35 @@ std::vector<fs::path> ConfigParser::expand_glob_(const fs::path& base_dir,
 }
 
 std::map<std::string, std::string> ConfigParser::parse_environment_(const std::string& env_str) {
-    // Split by comma
-    std::istringstream iss(env_str);
-    std::string pair;
+    namespace qi = boost::spirit::qi;
+    namespace ascii = boost::spirit::ascii;
+
+    using qi::char_;
+    using qi::lit;
+    using ascii::alnum;
+    using ascii::space;
+
+    // Grammar rules
+    using Rule = qi::rule<std::string::const_iterator, std::string()>;
+    const Rule key = +(alnum | char_('_'));
+    const Rule double_quoted = lit('"') >> *(('\\' >> char_) | (char_ - '"')) >> lit('"');
+    const Rule single_quoted = lit('\'') >> *(('\\' >> char_) | (char_ - '\'')) >> lit('\'');
+    const Rule raw_value = qi::raw[*(char_ - ',')];
+    const Rule value = double_quoted | single_quoted | raw_value;
+
+    using Pair = std::pair<std::string, std::string>;
+    qi::rule<std::string::const_iterator, Pair(), ascii::space_type> pair_rule =
+        key >> '=' >> value;
+
+    qi::rule<std::string::const_iterator, std::vector<Pair>(), ascii::space_type> env_list =
+        pair_rule % ',';
 
     std::map<std::string, std::string> env_map;
-    while (std::getline(iss, pair, ',')) {
-        // Trim whitespace
-        pair.erase(0, pair.find_first_not_of(" \t"));
-        pair.erase(pair.find_last_not_of(" \t") + 1);
-
-        // Skip empty pairs
-        if (pair.empty()) continue;
-
-        // Split by '='
-        const size_t eq_pos = pair.find('=');
-        if (eq_pos == std::string::npos) {
-            throw ConfigParseError("Invalid environment variable format (missing '='): " + pair);
-        }
-
-        auto key   = pair.substr(0, eq_pos);
-        auto value = pair.substr(eq_pos + 1);
-
-        // Trim key and value
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t") + 1);
-        value.erase(0, value.find_first_not_of(" \t"));
-        value.erase(value.find_last_not_of(" \t") + 1);
-
-        // Strip surrounding quotes from value if present
-        if (value.size() >= 2) {
-            if ((value.front() == '"' && value.back() == '"') ||
-                (value.front() == '\'' && value.back() == '\'')) {
-                value = value.substr(1, value.size() - 2);
-            }
-        }
-
-        if (key.empty()) throw ConfigParseError("Invalid environment variable format (empty key): " + pair);
-
-        env_map[key] = value;
+    auto it = std::cbegin(env_str);
+    const auto end = std::cend(env_str);
+    const bool ok = qi::phrase_parse(it, end, env_list, space, env_map);
+    if (!ok || it != end) {
+        throw ConfigParseError("Invalid environment variable format: " + env_str);
     }
 
     return env_map;

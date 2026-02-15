@@ -6,6 +6,7 @@
 #include <functional>
 #include <random>
 #include <string>
+#include <string_view>
 #include <sys/stat.h>
 
 namespace test_util {
@@ -133,6 +134,15 @@ private:
     fs::path    path_;
     int         counter_{0};
 };
+
+/// Predicate for BOOST_CHECK_EXCEPTION that verifies e.what() contains substr.
+/// On mismatch, re-throws so Boost.Test reports the actual error message.
+inline auto msg_contains(std::string_view substr) {
+    return [=](const std::exception& e) {
+        if (!std::string_view{e.what()}.contains(substr)) throw;
+        return true;
+    };
+}
 
 } // namespace test_util
 
