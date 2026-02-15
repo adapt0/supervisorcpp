@@ -1,10 +1,10 @@
 #include "config_parser.h"
+#include "ptree_ext.h"
 #include "../util/secure.h"
 #include "../util/string.h"
 #include <algorithm>
 #include <regex>
 #include <sstream>
-#include <boost/algorithm/string/case_conv.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 
@@ -28,13 +28,14 @@ static std::string strip_inline_comment(const std::string& value) {
 
 static void strip_ptree_comments(pt::ptree& tree) {
     for (auto& [key, subtree] : tree) {
-        auto value = subtree.get_value<std::string>("");
+        const auto value = subtree.get_value<std::string>("");
         if (!value.empty()) {
             subtree.put_value(strip_inline_comment(value));
         }
         strip_ptree_comments(subtree);
     }
 }
+
 
 Configuration ConfigParser::parse_file(const fs::path& config_file) {
     if (!fs::exists(config_file)) {
@@ -102,29 +103,21 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
 
     // Parse supervisord section
     if (const auto section = tree.get_child_optional("supervisord")) {
-        if (auto logfile = section->get_optional<std::string>("logfile")) {
-            config.supervisord.logfile = *logfile;
-        }
-        if (auto loglevel = section->get_optional<std::string>("loglevel")) {
+        pt_get(section, "childlogdir", config.supervisord.childlogdir);
+        pt_get(section, "logfile",     config.supervisord.logfile);
+        pt_get(section, "loglevel",    config.supervisord.loglevel, [](const auto& str) {
             try {
-                config.supervisord.loglevel = logger::parse_log_level(*loglevel);
+                return logger::parse_log_level(str);
             } catch (const std::invalid_argument& e) {
-                throw ConfigParseError("[supervisord] " + std::string(e.what()));
+                throw ConfigParseError("[supervisord] loglevel - " + std::string(e.what()));
             }
-        }
-        if (auto user = section->get_optional<std::string>("user")) {
-            config.supervisord.user = *user;
-        }
-        if (auto childlogdir = section->get_optional<std::string>("childlogdir")) {
-            config.supervisord.childlogdir = *childlogdir;
-        }
+        });
+        pt_get(section, "user", config.supervisord.user);
     }
 
     // Parse supervisorctl section
     if (const auto section = tree.get_child_optional("supervisorctl")) {
-        if (const auto serverurl = section->get_optional<std::string>("serverurl")) {
-            config.supervisorctl.serverurl = *serverurl;
-        }
+        pt_get(section, "serverurl", config.supervisorctl.serverurl);
     }
 
     // Parse include section and recursively load included files
@@ -153,79 +146,40 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
             prog.name = key.substr(8); // Remove "program:" prefix
 
             // Required: command
-            if (const auto command = value.get_optional<std::string>("command")) {
-                prog.command = *command;
-            } else {
+            if (!pt_get(value, "command", prog.command) || prog.command.empty()) {
                 throw ConfigParseError("Program [" + key + "] missing required 'command'");
             }
 
             // Optional: environment
-            if (const auto env = value.get_optional<std::string>("environment")) {
-                const auto parsed_env = parse_environment_(*env);
+            pt_get(value, "environment", prog.environment, [](const auto& str) {
+                const auto parsed_env = parse_environment_(str);
                 // SECURITY: Sanitize environment variables
-                prog.environment = util::sanitize_environment(parsed_env);
-            }
+                return util::sanitize_environment(parsed_env);
+            });
 
-            // Optional: directory
-            if (const auto dir = value.get_optional<std::string>("directory")) {
-                prog.directory = *dir;
-            }
+            // Optional fields
+            pt_get(value, "directory",    prog.directory, [](const std::string& s) -> fs::path { return s; });
+            pt_get(value, "autorestart",  prog.autorestart);
+            pt_get(value, "user",         prog.user);
+            pt_get(value, "redirect_stderr", prog.redirect_stderr);
+            pt_get(value, "startsecs",    prog.startsecs);
+            pt_get(value, "startretries", prog.startretries);
+            pt_get(value, "stopwaitsecs", prog.stopwaitsecs);
 
-            // Optional: autorestart
-            if (const auto autorestart = value.get_optional<std::string>("autorestart")) {
-                const auto val = boost::algorithm::to_lower_copy(*autorestart);
-                prog.autorestart = (val == "true" || val == "yes" || val == "1");
-            }
-
-            // Optional: user
-            if (const auto user = value.get_optional<std::string>("user")) {
-                prog.user = *user;
-            }
-
-            // Optional: stdout_logfile
-            if (const auto logfile = value.get_optional<std::string>("stdout_logfile")) {
-                prog.stdout_logfile = prog.substitute_variables(*logfile);
-            }
-
-            // Optional: stdout_logfile_maxbytes
-            if (const auto maxbytes = value.get_optional<std::string>("stdout_logfile_maxbytes")) {
-                try {
-                    prog.stdout_logfile_maxbytes = parse_size(*maxbytes);
-                } catch (const std::invalid_argument& e) {
+            pt_get(value, "stdout_logfile", prog.stdout_logfile, [&prog](const std::string& s) -> fs::path {
+                return prog.substitute_variables(s);
+            });
+            pt_get(value, "stdout_logfile_maxbytes", prog.stdout_logfile_maxbytes, [&key](const std::string& s) -> size_t {
+                try { return parse_size(s); } catch (const std::invalid_argument& e) {
                     throw ConfigParseError("Program [" + key + "]: " + e.what());
                 }
-            }
-
-            // Optional: redirect_stderr
-            if (const auto redirect = value.get_optional<std::string>("redirect_stderr")) {
-                const auto val = boost::algorithm::to_lower_copy(*redirect);
-                prog.redirect_stderr = (val == "true" || val == "yes" || val == "1");
-            }
-
-            // Optional: startsecs
-            if (const auto startsecs = value.get_optional<int>("startsecs")) {
-                prog.startsecs = *startsecs;
-            }
-
-            // Optional: startretries
-            if (const auto startretries = value.get_optional<int>("startretries")) {
-                prog.startretries = *startretries;
-            }
-
-            // Optional: stopwaitsecs
-            if (const auto stopwaitsecs = value.get_optional<int>("stopwaitsecs")) {
-                prog.stopwaitsecs = *stopwaitsecs;
-            }
-
-            // Optional: stopsignal
-            if (const auto stopsignal = value.get_optional<std::string>("stopsignal")) {
-                try {
-                    util::validate_signal(*stopsignal);
-                    prog.stopsignal = *stopsignal;
-                } catch (const std::invalid_argument& e) {
+            });
+            pt_get(value, "stopsignal", prog.stopsignal, [&key](const std::string& s) {
+                try { util::validate_signal(s); } catch (const std::invalid_argument& e) {
                     throw ConfigParseError("Program [" + key + "]: " + e.what());
                 }
-            }
+                return s;
+            });
 
             // Apply variable substitution to command
             prog.command = prog.substitute_variables(prog.command);
@@ -274,8 +228,8 @@ std::vector<fs::path> ConfigParser::expand_glob_(const fs::path& base_dir,
     }
 
     // Extract directory and filename pattern
-    fs::path dir = search_path.parent_path();
-    
+    const auto dir = search_path.parent_path();
+
     // Convert glob pattern to regex, escaping special regex characters (except * and ?)
     const std::regex file_regex{util::glob_to_regex(
         search_path.filename().string()
@@ -320,8 +274,8 @@ std::map<std::string, std::string> ConfigParser::parse_environment_(const std::s
             throw ConfigParseError("Invalid environment variable format (missing '='): " + pair);
         }
 
-        std::string key = pair.substr(0, eq_pos);
-        std::string value = pair.substr(eq_pos + 1);
+        auto key   = pair.substr(0, eq_pos);
+        auto value = pair.substr(eq_pos + 1);
 
         // Trim key and value
         key.erase(0, key.find_first_not_of(" \t"));
