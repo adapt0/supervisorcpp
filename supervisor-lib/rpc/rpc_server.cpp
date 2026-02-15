@@ -30,6 +30,9 @@ std::string RpcServer::dispatch_method(const std::string& method_name, const Rpc
 }
 
 void RpcServer::start() {
+    // SECURITY: Validate socket directory before creating socket
+    util::validate_socket_directory(socket_path_);
+
     // Remove existing socket file if it exists
     ::unlink(socket_path_.c_str());
 
@@ -39,9 +42,10 @@ void RpcServer::start() {
     // Open and bind acceptor
     acceptor_.open(endpoint.protocol());
     acceptor_.bind(endpoint);
-    acceptor_.listen();
 
     // SECURITY: Set socket permissions to 0600 (owner read/write only)
+    // Must happen BEFORE listen() to avoid TOCTOU race where the socket
+    // is briefly connectable with default permissions.
     try {
         util::set_socket_permissions(socket_path_);
     } catch (const util::SecurityError& e) {
@@ -49,6 +53,7 @@ void RpcServer::start() {
         throw;
     }
 
+    acceptor_.listen();
     running_ = true;
     LOG_INFO << "RPC server listening on " << socket_path_;
 

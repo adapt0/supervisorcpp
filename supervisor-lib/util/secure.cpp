@@ -178,6 +178,27 @@ void close_inherited_fds() {
     }
 }
 
+void validate_socket_directory(const fs::path& socket_path) {
+    const auto dir = socket_path.parent_path();
+
+    struct stat st;
+    if (stat(dir.c_str(), &st) != 0) {
+        throw SecurityError("Socket directory does not exist: " + dir.string());
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        throw SecurityError("Socket path parent is not a directory: " + dir.string());
+    }
+
+    // World-writable directories (even with sticky bit) are unsafe for sockets.
+    // Sticky bit only prevents deletion of others' files, not creation of new
+    // files at a recently-unlinked path — so TOCTOU between unlink() and bind()
+    // allows DoS. Use a root-owned directory like /run/supervisord/ instead.
+    if (st.st_mode & S_IWOTH) {
+        throw SecurityError("Socket directory must not be world-writable: " + dir.string());
+    }
+}
+
 void set_socket_permissions(const std::filesystem::path& socket_path) {
     if (chmod(socket_path.c_str(), S_IRUSR | S_IWUSR) != 0) {
         throw SecurityError("Failed to set socket permissions: " + socket_path.string());

@@ -69,6 +69,12 @@ std::map<std::string, std::string> sanitize_environment(const std::map<std::stri
 void close_inherited_fds();
 
 /**
+ * Validate socket directory is not world-writable
+ * Prevents TOCTOU attacks between unlink and bind in shared directories
+ */
+void validate_socket_directory(const std::filesystem::path& socket_path);
+
+/**
  * Set secure permissions on Unix socket
  * chmod 0600 (owner read/write only)
  */
