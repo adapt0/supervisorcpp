@@ -116,55 +116,55 @@ private:
      * Spawn the child process (fork + exec)
      * @return PID on success, -1 on failure
      */
-    pid_t spawn();
+    pid_t spawn_();
 
     /**
      * Setup child process environment after fork
      * Called in child process before exec
      */
-    void setup_child_process();
+    void setup_child_process_();
 
     /**
      * Switch to configured user (setuid/setgid)
      * Called in child process before exec
      */
-    bool switch_user();
+    bool switch_user_();
 
     /**
      * Setup working directory
      */
-    bool setup_working_directory();
+    bool setup_working_directory_();
 
     /**
      * Setup environment variables
      */
-    void setup_environment();
+    void setup_environment_();
 
     /**
      * Setup stdout/stderr capture
      * @return true on success
      */
-    bool setup_io_redirection();
+    bool setup_io_redirection_();
 
     /**
      * Parse command line into argv array
      */
-    std::vector<std::string> parse_command() const;
+    std::vector<std::string> parse_command_() const;
 
     /**
      * Transition to a new state
      */
-    void set_state(State new_state);
+    void set_state_(State new_state);
 
     /**
      * Record spawn error
      */
-    void set_spawn_error(const std::string& error);
+    void set_spawn_error_(const std::string& error);
 
     /**
      * Start async reading from stdout pipe
      */
-    void start_stdout_read();
+    void start_stdout_read_();
 
     /**
      * Handle stdout read completion

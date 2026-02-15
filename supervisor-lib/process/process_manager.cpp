@@ -15,8 +15,8 @@ ProcessManager::ProcessManager(boost::asio::io_context& io_context,
 , update_interval_(update_interval)
 {
     LOG_INFO << "ProcessManager initialized";
-    setup_signal_handler();
-    setup_update_timer();
+    begin_signal_handler_();
+    begin_update_timer_();
 }
 
 ProcessManager::~ProcessManager() {
@@ -25,11 +25,11 @@ ProcessManager::~ProcessManager() {
 }
 
 void ProcessManager::add_process(const config::ProgramConfig& config) {
-    auto process = std::make_unique<Process>(io_context_, config);
-    Process* proc_ptr = process.get();
+    auto process_uptr = std::make_unique<Process>(io_context_, config);
+    Process* proc_raw = process_uptr.get();
 
-    processes_.push_back(std::move(process));
-    process_map_[config.name] = proc_ptr;
+    processes_.push_back(std::move(process_uptr));
+    process_map_[config.name] = proc_raw;
 
     LOG_INFO << "Added process '" << config.name << "' to manager";
 }
@@ -60,7 +60,7 @@ void ProcessManager::stop_all() {
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
     while (has_running_processes() && std::chrono::steady_clock::now() < deadline) {
         int status;
-        pid_t pid = waitpid(-1, &status, WNOHANG);
+        const pid_t pid = waitpid(-1, &status, WNOHANG);
         if (pid > 0) {
             LOG_DEBUG << "Reaped child process " << pid << ", status=" << status;
             for (auto& process : processes_) {
@@ -84,7 +84,7 @@ void ProcessManager::stop_all() {
 }
 
 bool ProcessManager::start_process(const std::string& name) {
-    auto it = process_map_.find(name);
+    const auto it = process_map_.find(name);
     if (it == process_map_.end()) {
         LOG_ERROR << "Process '" << name << "' not found";
         return false;
@@ -94,7 +94,7 @@ bool ProcessManager::start_process(const std::string& name) {
 }
 
 bool ProcessManager::stop_process(const std::string& name) {
-    auto it = process_map_.find(name);
+    const auto it = process_map_.find(name);
     if (it == process_map_.end()) {
         LOG_ERROR << "Process '" << name << "' not found";
         return false;
@@ -104,13 +104,12 @@ bool ProcessManager::stop_process(const std::string& name) {
 }
 
 bool ProcessManager::restart_process(const std::string& name) {
-    auto it = process_map_.find(name);
-    if (it == process_map_.end()) {
+    const auto it = process_map_.find(name);
+    if (std::end(process_map_) == it) {
         LOG_ERROR << "Process '" << name << "' not found";
         return false;
     }
-
-    Process* proc = it->second;
+    auto* proc = it->second;
 
     if (proc->pid() > 0) {
         if (!proc->stop()) {
@@ -133,12 +132,9 @@ bool ProcessManager::restart_process(const std::string& name) {
     return proc->start();
 }
 
-Process* ProcessManager::get_process(const std::string& name) {
-    auto it = process_map_.find(name);
-    if (it == process_map_.end()) {
-        return nullptr;
-    }
-    return it->second;
+const Process* ProcessManager::get_process(const std::string& name) const {
+    const auto it = process_map_.find(name);
+    return (std::end(process_map_) != it) ? it->second : nullptr;
 }
 
 std::vector<ProcessInfo> ProcessManager::get_all_process_info() const {
@@ -153,17 +149,18 @@ std::vector<ProcessInfo> ProcessManager::get_all_process_info() const {
 }
 
 bool ProcessManager::has_running_processes() const {
-    return std::any_of(std::begin(processes_), std::end(processes_),
-                      [](const auto& p) { return p->pid() > 0; });
+    return std::any_of(
+        std::begin(processes_), std::end(processes_),
+        [](const auto& p) { return p->pid() > 0; }
+    );
 }
 
-void ProcessManager::setup_signal_handler() {
+void ProcessManager::begin_signal_handler_() {
     signals_.async_wait([this](const boost::system::error_code& error, int /*signal_number*/) {
-        if (!error) {
-            handle_sigchld_();
-            // Re-register handler
-            setup_signal_handler();
-        }
+        if (error) return;
+
+        handle_sigchld_();
+        begin_signal_handler_();
     });
 }
 
@@ -171,8 +168,7 @@ void ProcessManager::handle_sigchld_() {
     // Reap all exited children
     while (true) {
         int status;
-        pid_t pid = waitpid(-1, &status, WNOHANG);
-
+        const pid_t pid = waitpid(-1, &status, WNOHANG);
         if (pid <= 0) {
             break;  // No more children to reap
         }
@@ -189,23 +185,23 @@ void ProcessManager::handle_sigchld_() {
     }
 }
 
-void ProcessManager::setup_update_timer() {
+void ProcessManager::begin_update_timer_() {
     timer_.expires_after(update_interval_);
     timer_.async_wait([this](const boost::system::error_code& error) {
         if (!error) {
-            on_timer();
+            on_timer_();
         }
     });
 }
 
-void ProcessManager::on_timer() {
+void ProcessManager::on_timer_() {
     // Update all processes
     for (auto& process : processes_) {
         process->update();
     }
 
     // Schedule next update
-    setup_update_timer();
+    begin_update_timer_();
 }
 
 } // namespace supervisorcpp::process

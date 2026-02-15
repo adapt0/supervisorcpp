@@ -63,12 +63,12 @@ public:
     /**
      * Get process by name
      */
-    Process* get_process(const std::string& name);
+    const Process* get_process(const std::string& name) const;
 
     /**
      * Get all processes
      */
-    const std::vector<std::unique_ptr<Process>>& get_processes() const {
+    const auto& get_processes() const noexcept {
         return processes_;
     }
 
@@ -84,9 +84,9 @@ public:
 
 private:
     /**
-     * Setup SIGCHLD handler
+     * Begin SIGCHLD handler
      */
-    void setup_signal_handler();
+    void begin_signal_handler_();
 
     /**
      * Handle SIGCHLD signal
@@ -94,31 +94,21 @@ private:
     void handle_sigchld_();
 
     /**
-     * Setup periodic timer for process updates
+     * Begin next periodic timer for process updates
      */
-    void setup_update_timer();
+    void begin_update_timer_();
 
     /**
      * Periodic update callback
      */
-    void on_timer();
+    void on_timer_();
 
-    // IO context for async operations
     boost::asio::io_context& io_context_;
-
-    // Signal set for SIGCHLD
     boost::asio::signal_set signals_;
-
-    // Timer for periodic updates
     boost::asio::steady_timer timer_;
 
-    // All managed processes
     std::vector<std::unique_ptr<Process>> processes_;
-
-    // Map for quick lookup by name
     std::map<std::string, Process*> process_map_;
-
-    // Update timer interval
     std::chrono::milliseconds update_interval_;
 };
 
