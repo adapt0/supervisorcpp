@@ -2,9 +2,10 @@
 #ifndef SUPERVISOR_LIB__RPC__XMLRPC
 #define SUPERVISOR_LIB__RPC__XMLRPC
 
-#include <iosfwd>
+#include <sstream>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace supervisorcpp::process {
     struct ProcessInfo;
@@ -22,12 +23,13 @@ public:
     requires std::is_integral_v<T>
     Value(T i) : value_{i} { }
 
-    Value(Value&&) = delete;
-    Value& operator=(Value&&) = delete;
+    Value(Value&&) = default;
+    Value& operator=(Value&&) = default;
+
     Value(const Value&) = delete;
     Value& operator=(const Value&) = delete;
 
-    std::string toString() const;
+    std::string str() const;
 
 private:
     std::variant<std::string_view, int, bool> value_;
@@ -41,33 +43,66 @@ public:
     template <typename T>
     Member(std::string_view name, T value) : name_{name}, value_{std::move(value)} { }
 
-    Member(Member&&) = delete;
-    Member& operator=(Member&&) = delete;
+    Member(Member&&) = default;
+    Member& operator=(Member&&) = default;
+
     Member(const Member&) = delete;
     Member& operator=(const Member&) = delete;
 
-    std::string toString() const;
+    std::string str() const;
 
 private:
     std::string_view name_;
     Value value_;
 };
 
+class Struct {
+public:
+    friend std::ostream& operator<<(std::ostream& outs, const Struct& s);
 
-/// xmlrpc stream helper for process::ProcessInfo
-struct XmlProcessInfo {
-    friend std::ostream& operator<<(std::ostream& outs, const XmlProcessInfo& info);
+    template<typename... Args>
+    requires (std::is_same_v<std::decay_t<Args>, Member> && ...)
+    Struct(Args&&... args) {
+        items_.reserve(sizeof...(args));
+        (items_.emplace_back(std::move(args)), ...);
+    }
 
-    XmlProcessInfo(const process::ProcessInfo& info) : info_{info} { }
+    Struct(Struct&&) = delete;
+    Struct& operator=(Struct&&) = delete;
+    Struct(const Struct&) = delete;
+    Struct& operator=(const Struct&) = delete;
 
-    XmlProcessInfo(XmlProcessInfo&&) = delete;
-    XmlProcessInfo& operator=(XmlProcessInfo&&) = delete;
-    XmlProcessInfo(const XmlProcessInfo&) = delete;
-    XmlProcessInfo& operator=(const XmlProcessInfo&) = delete;
+    std::string str() const;
 
 private:
-    const process::ProcessInfo& info_;
+    std::vector<Member> items_;
 };
+
+
+/// XML RPC to ostream boiler plate
+template <typename T>
+struct XmlFromT {
+    friend std::ostream& operator<<(std::ostream& outs, const XmlFromT<T>& from);
+
+    XmlFromT(const T& value) : value_{value} { }
+
+    XmlFromT(XmlFromT&&) = delete;
+    XmlFromT& operator=(XmlFromT&&) = delete;
+    XmlFromT(const XmlFromT&) = delete;
+    XmlFromT& operator=(const XmlFromT&) = delete;
+
+    std::string str() const {
+        return (std::ostringstream{} << *this).str();
+    }
+
+private:
+    const T& value_;
+};
+
+template <typename T>
+inline XmlFromT<T> wrap(const T& value) {
+    return XmlFromT<T>{value};
+}
 
 } // supervisorcpp::xmlrpc
 

@@ -43,6 +43,7 @@ tests/
 
 ## Key Conventions
 
+- **Const correctness** — prefer `const` by default for local variables, references, and pointers. Use `const auto` for values that don't need mutation.
 - **C++23** standard, compiled with `-Wall -Wextra -Wpedantic`
 - **Headers alongside implementation** — `.h` and `.cpp` live in the same directory
 - **Header-only utilities** for small modules: `util/errors.h`, `util/path.h`, `config/validation.h`, `process/setup.h`, `rpc/socket_util.h`

@@ -22,30 +22,52 @@ std::ostream& operator<<(std::ostream& outs, const Value& value) {
 
     return outs;
 }
-std::string Value::toString() const {
+std::string Value::str() const {
     return (std::ostringstream{} << *this).str();
 }
 
 std::ostream& operator<<(std::ostream& outs, const Member& member) {
-    return outs << "<member><name>" << util::escape_xml(member.name_) << "</name><value>" << member.value_ << "</value></member>";
+    return outs << "<member>"
+        << "<name>" << util::escape_xml(member.name_) << "</name>"
+        << "<value>" << member.value_ << "</value>"
+        << "</member>"
+    ;
 }
-std::string Member::toString() const {
+std::string Member::str() const {
     return (std::ostringstream{} << *this).str();
 }
 
-std::ostream& operator<<(std::ostream& outs, const XmlProcessInfo& info) {
-    return outs << "<struct>"
-        << xmlrpc::Member("name", info.info_.name)
-        << xmlrpc::Member("group", info.info_.name) // use name, as group not supported
-        << xmlrpc::Member("statename", boost::lexical_cast<std::string>(info.info_.state))
-        << xmlrpc::Member("state", static_cast<int>(info.info_.state))
-        << xmlrpc::Member("pid", info.info_.pid)
-        << xmlrpc::Member("exitstatus", info.info_.exitstatus)
-        << xmlrpc::Member("stdout_logfile", info.info_.stdout_logfile)
-        << xmlrpc::Member("spawnerr", info.info_.spawnerr)
-        << xmlrpc::Member("description", info.info_.description)
-        << "</struct>"
-    ;
+std::ostream& operator<<(std::ostream& outs, const Struct& s) {
+    outs << "<struct>";
+    for (const auto& item : s.items_) {
+        outs << item;
+    }
+    return outs << "</struct>";
+}
+std::string Struct::str() const {
+    return (std::ostringstream{} << *this).str();
+}
+
+std::ostream& operator<<(std::ostream& outs, const XmlFromT<process::ProcessInfo>& from) {
+    return outs << Struct{
+        Member{"name", from.value_.name},
+        Member{"group", from.value_.name}, // use name, as group not supported
+        Member("statename", boost::lexical_cast<std::string>(from.value_.state)),
+        Member("state", static_cast<int>(from.value_.state)),
+        Member("pid", from.value_.pid),
+        Member("exitstatus", from.value_.exitstatus),
+        Member("stdout_logfile", from.value_.stdout_logfile),
+        Member("spawnerr", from.value_.spawnerr),
+        Member("description", from.value_.description),
+    };
+}
+
+std::ostream& operator<<(std::ostream& outs, const XmlFromT<std::vector<process::ProcessInfo>>& from) {
+    outs << "<array><data>";
+    for (const auto& info : from.value_) {
+        outs << "<value>" << wrap(info) << "</value>";
+    }
+    return outs << "</data></array>";
 }
 
 } // supervisorcpp::xmlrpc

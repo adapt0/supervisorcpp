@@ -121,14 +121,14 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
     }
 
     // Parse supervisorctl section
-    if (auto section = tree.get_child_optional("supervisorctl")) {
-        if (auto serverurl = section->get_optional<std::string>("serverurl")) {
+    if (const auto section = tree.get_child_optional("supervisorctl")) {
+        if (const auto serverurl = section->get_optional<std::string>("serverurl")) {
             config.supervisorctl.serverurl = *serverurl;
         }
     }
 
     // Parse include section and recursively load included files
-    if (auto section = tree.get_child_optional("include")) {
+    if (const auto section = tree.get_child_optional("include")) {
         std::vector<std::string> patterns;
         for (const auto& [key, value] : *section) {
             if (key == "files") {

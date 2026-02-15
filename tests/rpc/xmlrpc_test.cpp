@@ -8,17 +8,17 @@ namespace process = supervisorcpp::process;
 namespace xmlrpc = supervisorcpp::xmlrpc;
 
 BOOST_AUTO_TEST_CASE(xmlrpc__value) {
-    BOOST_CHECK_EQUAL(xmlrpc::Value{"Test"}.toString(), "<string>Test</string>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{"Test"}.str(), "<string>Test</string>");
 
-    BOOST_CHECK_EQUAL(xmlrpc::Value{42}.toString(), "<int>42</int>");
-    BOOST_CHECK_EQUAL(xmlrpc::Value{-2}.toString(), "<int>-2</int>");
-    BOOST_CHECK_EQUAL(xmlrpc::Value{0}.toString(), "<int>0</int>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{42}.str(), "<int>42</int>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{-2}.str(), "<int>-2</int>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{0}.str(), "<int>0</int>");
 
-    BOOST_CHECK_EQUAL(xmlrpc::Value{true}.toString(), "<boolean>1</boolean>");
-    BOOST_CHECK_EQUAL(xmlrpc::Value{false}.toString(), "<boolean>0</boolean>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{true}.str(), "<boolean>1</boolean>");
+    BOOST_CHECK_EQUAL(xmlrpc::Value{false}.str(), "<boolean>0</boolean>");
 
-    BOOST_CHECK_EQUAL(xmlrpc::Member("ABoolean", true).toString(), "<member><name>ABoolean</name><value><boolean>1</boolean></value></member>");
-    BOOST_CHECK_EQUAL(xmlrpc::Member("Beg<>End", "Beg & End").toString(), "<member><name>Beg&lt;&gt;End</name><value><string>Beg &amp; End</string></value></member>");
+    BOOST_CHECK_EQUAL(xmlrpc::Member("ABoolean", true).str(), "<member><name>ABoolean</name><value><boolean>1</boolean></value></member>");
+    BOOST_CHECK_EQUAL(xmlrpc::Member("Beg<>End", "Beg & End").str(), "<member><name>Beg&lt;&gt;End</name><value><string>Beg &amp; End</string></value></member>");
 }
 
 BOOST_AUTO_TEST_CASE(xmlrpc__process_state_strings) {
@@ -36,14 +36,15 @@ BOOST_AUTO_TEST_CASE(xmlrpc__process_state_strings) {
 }
 
 BOOST_AUTO_TEST_CASE(xmlrpc__xml_process_info) {
-    const auto m = [](auto name, auto val) { return xmlrpc::Member(name, val).toString(); };
-    auto serialize = [](const process::ProcessInfo& i) {
-        return (std::ostringstream{} << xmlrpc::XmlProcessInfo{i}).str();
-    };
+    const auto m = [](auto name, auto val) { return xmlrpc::Member(name, val).str(); };
+    // auto serialize = [](const process::ProcessInfo& i) {
+    //     return xmlif()
+    //     return (std::ostringstream{} << xmlrpc::XmlProcessInfo{i}).str();
+    // };
 
     // Basic serialization — all fields present, correct order
     BOOST_CHECK_EQUAL(
-        serialize({
+        xmlrpc::wrap(process::ProcessInfo{
             .name = "myapp",
             .state = process::State::RUNNING,
             .pid = 42,
@@ -51,7 +52,7 @@ BOOST_AUTO_TEST_CASE(xmlrpc__xml_process_info) {
             .stdout_logfile = "/tmp/myapp.log",
             .spawnerr = "",
             .description = "pid 42, uptime 0:01:00",
-        }),
+        }).str(),
         "<struct>"
             + m("name",            "myapp")
             + m("group",           "myapp")  // group mirrors name (groups not supported)
@@ -66,13 +67,13 @@ BOOST_AUTO_TEST_CASE(xmlrpc__xml_process_info) {
 
     // XML escaping — special chars in name and description
     BOOST_CHECK_EQUAL(
-        serialize({
+        xmlrpc::wrap(process::ProcessInfo{
             .name = "test<app>",
             .state = process::State::FATAL,
             .pid = 0,
             .exitstatus = 1,
             .description = "error: <&> failed",
-        }),
+        }).str(),
         "<struct>"
             + m("name",            "test<app>")
             + m("group",           "test<app>")

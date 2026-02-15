@@ -163,12 +163,11 @@ std::string RpcConnection::generate_xmlrpc_fault_(int code, const std::string& m
     oss << "<?xml version=\"1.0\"?>\n"
         << "<methodResponse>\n"
         << "  <fault>\n"
-        << "    <value>\n"
-        << "      <struct>\n"
-        << "        " << xmlrpc::Member{"faultCode", code} << '\n'
-        << "        " << xmlrpc::Member{"faultString", message} << '\n'
-        << "      </struct>\n"
-        << "    </value>\n"
+        << "    <value>"
+        << xmlrpc::Struct{
+            xmlrpc::Member{"faultCode", code},
+            xmlrpc::Member{"faultString", message},
+        } << "</value>\n"
         << "  </fault>\n"
         << "</methodResponse>\n"
     ;

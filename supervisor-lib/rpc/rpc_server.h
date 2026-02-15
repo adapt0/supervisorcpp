@@ -7,10 +7,6 @@
 #include <map>
 #include <boost/asio.hpp>
 
-namespace supervisorcpp::process {
-    class ProcessManager;
-}
-
 namespace supervisorcpp::rpc {
 
 /**
@@ -20,22 +16,20 @@ namespace supervisorcpp::rpc {
 using RpcHandler = std::function<std::string(const RpcParams&)>;
 
 /**
- * XML-RPC server for supervisord
- * Listens on Unix domain socket and handles supervisorctl requests
+ * Generic XML-RPC server over Unix domain sockets.
+ * Accepts connections, parses XML-RPC requests, and dispatches
+ * to registered handlers. Has no knowledge of what the handlers do.
  */
 class RpcServer : public std::enable_shared_from_this<RpcServer> {
     struct UseCreate { };
 public:
     static auto create(boost::asio::io_context& io_context,
-                       const std::string& socket_path,
-                       process::ProcessManager& process_manager
-    ) {
-        return std::make_shared<RpcServer>(UseCreate{}, io_context, socket_path, process_manager);
+                       const std::string& socket_path) {
+        return std::make_shared<RpcServer>(UseCreate{}, io_context, socket_path);
     }
 
     RpcServer(UseCreate, boost::asio::io_context& io_context,
-              const std::string& socket_path,
-              process::ProcessManager& process_manager);
+              const std::string& socket_path);
     ~RpcServer();
 
     RpcServer(const RpcServer&) = delete;
@@ -43,60 +37,21 @@ public:
     RpcServer(RpcServer&&) = delete;
     RpcServer& operator=(RpcServer&&) = delete;
 
-    /**
-     * Start accepting connections
-     */
-    void start();
-
-    /**
-     * Stop the server
-     */
-    void stop();
-
-    /**
-     * Dispatch RPC method call
-     */
+    void register_handler(const std::string& name, RpcHandler handler);
     std::string dispatch_method(const std::string& method_name, const RpcParams& params);
 
-private:
-    /**
-     * Start accepting new connection
-     */
-    void start_accept_();
+    void start();
+    void stop();
 
-    /**
-     * Handle new connection
-     */
+private:
+    void start_accept_();
     void handle_accept_(const RpcConnectionPtr& connection_ptr, const boost::system::error_code& error);
 
-    /**
-     * Register RPC method handlers
-     */
-    void register_handlers_();
-
-    // RPC method handlers
-    std::string handle_get_state_(const RpcParams& params);
-    std::string handle_get_all_process_info_(const RpcParams& params);
-    std::string handle_get_process_info_(const RpcParams& params);
-    std::string handle_start_process_(const RpcParams& params);
-    std::string handle_stop_process_(const RpcParams& params);
-    std::string handle_start_all_processes_(const RpcParams& params);
-    std::string handle_stop_all_processes_(const RpcParams& params);
-    std::string handle_restart_process_(const RpcParams& params);
-    std::string handle_shutdown_(const RpcParams& params);
-
-    // IO context and acceptor
     boost::asio::io_context& io_context_;
     boost::asio::local::stream_protocol::acceptor acceptor_;
     std::string socket_path_;
-
-    // Process manager reference
-    process::ProcessManager& process_manager_;
-
-    // RPC method handlers
     std::map<std::string, RpcHandler> handlers_;
-
-    bool running_{false};   ///< shutdown flag
+    bool running_{false};
 };
 
 } // namespace supervisorcpp::rpc

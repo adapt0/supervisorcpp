@@ -1,3 +1,4 @@
+#include "rpc_handlers.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
 #include "process/process_manager.h"
@@ -85,7 +86,8 @@ int supervisord_main(int argc, char* argv[]) {
 
         // Create and start RPC server
         LOG_INFO << "Starting RPC server";
-        const auto rpc_server_ptr = rpc::RpcServer::create(io_context, config.unix_http_server.socket_file.string(), process_manager);
+        const auto rpc_server_ptr = rpc::RpcServer::create(io_context, config.unix_http_server.socket_file.string());
+        rpc::register_supervisor_handlers(*rpc_server_ptr, process_manager, io_context);
         rpc_server_ptr->start();
 
         // Start all processes
