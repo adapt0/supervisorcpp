@@ -15,26 +15,35 @@ constexpr const auto MAX_DEPTH = 10;
 namespace fs = std::filesystem;
 namespace pt = boost::property_tree;
 
-// Strip supervisord-style inline comments (; preceded by whitespace)
-static std::string strip_inline_comment(const std::string& value) {
-    for (size_t i = 1; i < value.size(); ++i) {
-        if (value[i] == ';' && (value[i - 1] == ' ' || value[i - 1] == '\t')) {
-            auto end = value.find_last_not_of(" \t", i - 1);
-            return (end != std::string::npos) ? value.substr(0, end + 1) : "";
-        }
-    }
-    return value;
-}
+// Filtering streambuf that strips inline ; comments before INI parsing
+class CommentStrippingBuf : public std::streambuf {
+public:
+    explicit CommentStrippingBuf(std::istream& source) : source_(source) {}
 
-static void strip_ptree_comments(pt::ptree& tree) {
-    for (auto& [key, subtree] : tree) {
-        const auto value = subtree.get_value<std::string>("");
-        if (!value.empty()) {
-            subtree.put_value(strip_inline_comment(value));
-        }
-        strip_ptree_comments(subtree);
+protected:
+    int_type underflow() override {
+        if (!std::getline(source_, buf_)) return traits_type::eof();
+        buf_ = strip_inline_comment_(buf_);
+        buf_ += '\n';
+        setg(buf_.data(), buf_.data(), buf_.data() + buf_.size());
+        return traits_type::to_int_type(*gptr());
     }
-}
+
+private:
+    // Strip supervisord-style inline comments (; preceded by whitespace)
+    static std::string strip_inline_comment_(const std::string& line) {
+        for (size_t i = 1; i < line.size(); ++i) {
+            if (line[i] == ';' && (line[i - 1] == ' ' || line[i - 1] == '\t')) {
+                const auto end = line.find_last_not_of(" \t", i - 1);
+                return (end != std::string::npos) ? line.substr(0, end + 1) : "";
+            }
+        }
+        return line;
+    }
+
+    std::istream& source_;
+    std::string buf_;
+};
 
 
 Configuration ConfigParser::parse_file(const fs::path& config_file) {
@@ -91,8 +100,11 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
     if (depth >= MAX_DEPTH) throw ConfigParseError("Include depth limit of " + std::to_string(MAX_DEPTH) + " hit");
 
     pt::ptree tree;
-    pt::read_ini(is, tree);
-    strip_ptree_comments(tree);
+    {
+        CommentStrippingBuf filtered_buf{is};
+        std::istream filtered(&filtered_buf);
+        pt::read_ini(filtered, tree);
+    }
 
     // Parse unix_http_server section
     if (const auto section = tree.get_child_optional("unix_http_server")) {

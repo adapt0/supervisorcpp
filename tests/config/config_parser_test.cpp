@@ -66,14 +66,16 @@ serverurl=unix:///run/supervisord.sock
 [program:test_app]
 command=/bin/echo hello
 startsecs=10 ; ten seconds
-)";
+startretries=2 ; last)";
 
     Configuration config = ConfigParser::parse_string(config_str);
 
     BOOST_CHECK(config.supervisord.loglevel == LogLevel::INFO);
     BOOST_CHECK_EQUAL(config.supervisord.logfile.string(), "/var/log/supervisord.log");
     BOOST_CHECK_EQUAL(config.supervisord.childlogdir.string(), "/var/log/supervisor");
+    BOOST_REQUIRE_EQUAL(config.programs.size(), 1);
     BOOST_CHECK_EQUAL(config.programs[0].startsecs, 10);
+    BOOST_CHECK_EQUAL(config.programs[0].startretries, 2);
 }
 
 BOOST_AUTO_TEST_CASE(TestParseProgramConfig) {
