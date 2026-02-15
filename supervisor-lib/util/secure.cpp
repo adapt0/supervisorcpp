@@ -5,6 +5,7 @@
 #include <string>
 #include <unistd.h>
 #include <vector>
+#include <sys/resource.h>
 #include <sys/stat.h>
 
 namespace supervisorcpp::util {

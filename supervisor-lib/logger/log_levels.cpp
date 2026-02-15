@@ -11,7 +11,7 @@ std::ostream& operator<<(std::ostream& os, LogLevel level) {
     case LogLevel::WARN: return os << "warn";
     case LogLevel::ERROR: return os << "error";
     }
-    os << "unknown[" << static_cast<int>(level) << ']';
+    return os << "unknown[" << static_cast<int>(level) << ']';
 }
 
 LogLevel parse_log_level(std::string level_str) {

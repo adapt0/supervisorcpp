@@ -48,23 +48,24 @@ std::string Struct::str() const {
     return (std::ostringstream{} << *this).str();
 }
 
+
 std::ostream& operator<<(std::ostream& outs, const XmlFromT<process::ProcessInfo>& from) {
     return outs << Struct{
-        Member{"name", from.value_.name},
-        Member{"group", from.value_.name}, // use name, as group not supported
-        Member("statename", boost::lexical_cast<std::string>(from.value_.state)),
-        Member("state", static_cast<int>(from.value_.state)),
-        Member("pid", from.value_.pid),
-        Member("exitstatus", from.value_.exitstatus),
-        Member("stdout_logfile", from.value_.stdout_logfile),
-        Member("spawnerr", from.value_.spawnerr),
-        Member("description", from.value_.description),
+        Member{"name", from.value.name},
+        Member{"group", from.value.name}, // use name, as group not supported
+        Member("statename", boost::lexical_cast<std::string>(from.value.state)),
+        Member("state", static_cast<int>(from.value.state)),
+        Member("pid", from.value.pid),
+        Member("exitstatus", from.value.exitstatus),
+        Member("stdout_logfile", from.value.stdout_logfile),
+        Member("spawnerr", from.value.spawnerr),
+        Member("description", from.value.description),
     };
 }
 
 std::ostream& operator<<(std::ostream& outs, const XmlFromT<std::vector<process::ProcessInfo>>& from) {
     outs << "<array><data>";
-    for (const auto& info : from.value_) {
+    for (const auto& info : from.value) {
         outs << "<value>" << wrap(info) << "</value>";
     }
     return outs << "</data></array>";

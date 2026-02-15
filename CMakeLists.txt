@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.30)
-project(supervisorcpp VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.28)
+project(supervisorcpp LANGUAGES CXX)
 
 # C++23 standard
 set(CMAKE_CXX_STANDARD 23)
@@ -20,7 +20,10 @@ else ()
 endif()
 
 # Find Boost
-find_package(Boost 1.84 REQUIRED COMPONENTS
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+find_package(Boost 1.80 REQUIRED COMPONENTS
     log
     log_setup
     program_options

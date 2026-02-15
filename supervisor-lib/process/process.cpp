@@ -221,15 +221,14 @@ void Process::update() {
 }
 
 ProcessInfo Process::get_info() const {
-    ProcessInfo info{
-        .name = config_.name,
-        .state = state_,
-        .pid = pid_,
-        .exitstatus = exitstatus_,
-        .stdout_logfile = config_.stdout_logfile.has_value() ? config_.stdout_logfile->string() : "",
-        .stderr_logfile = "",  // We redirect stderr to stdout
-        .spawnerr = spawn_error_
-    };
+    ProcessInfo info;
+    info.name = config_.name;
+    info.state = state_;
+    info.pid = pid_;
+    info.exitstatus = exitstatus_;
+    info.stdout_logfile = config_.stdout_logfile.has_value() ? config_.stdout_logfile->string() : "";
+    info.stderr_logfile = "",  // We redirect stderr to stdou;
+    info.spawnerr = spawn_error_;
 
     const auto now_time = std::chrono::system_clock::now();
     info.now = std::chrono::system_clock::to_time_t(now_time);

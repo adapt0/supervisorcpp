@@ -36,53 +36,56 @@ BOOST_AUTO_TEST_CASE(xmlrpc__process_state_strings) {
 }
 
 BOOST_AUTO_TEST_CASE(xmlrpc__xml_process_info) {
-    const auto m = [](auto name, auto val) { return xmlrpc::Member(name, val).str(); };
-    // auto serialize = [](const process::ProcessInfo& i) {
-    //     return xmlif()
-    //     return (std::ostringstream{} << xmlrpc::XmlProcessInfo{i}).str();
-    // };
+    using namespace xmlrpc;
 
     // Basic serialization — all fields present, correct order
-    BOOST_CHECK_EQUAL(
-        xmlrpc::wrap(process::ProcessInfo{
-            .name = "myapp",
-            .state = process::State::RUNNING,
-            .pid = 42,
-            .exitstatus = 0,
-            .stdout_logfile = "/tmp/myapp.log",
-            .spawnerr = "",
-            .description = "pid 42, uptime 0:01:00",
-        }).str(),
-        "<struct>"
-            + m("name",            "myapp")
-            + m("group",           "myapp")  // group mirrors name (groups not supported)
-            + m("statename",       "RUNNING")
-            + m("state",           20)
-            + m("pid",             42)
-            + m("exitstatus",      0)
-            + m("stdout_logfile",  "/tmp/myapp.log")
-            + m("spawnerr",        "")
-            + m("description",     "pid 42, uptime 0:01:00")
-            + "</struct>");
+    {
+        process::ProcessInfo info;
+        info.name = "myapp";
+        info.state = process::State::RUNNING;
+        info.pid = 42;
+        info.exitstatus = 0;
+        info.stdout_logfile = "/tmp/myapp.log";
+        info.spawnerr = "";
+        info.description = "pid 42, uptime 0:01:00";
+        BOOST_CHECK_EQUAL(
+            wrap(info).str(),
+            Struct({
+                Member("name",            "myapp"),
+                Member("group",           "myapp"),  // group mirrors name (groups not supported)
+                Member("statename",       "RUNNING"),
+                Member("state",           20),
+                Member("pid",             42),
+                Member("exitstatus",      0),
+                Member("stdout_logfile",  "/tmp/myapp.log"),
+                Member("spawnerr",        ""),
+                Member("description",     "pid 42, uptime 0:01:00"),
+            }).str()
+        );
+    }
 
     // XML escaping — special chars in name and description
-    BOOST_CHECK_EQUAL(
-        xmlrpc::wrap(process::ProcessInfo{
-            .name = "test<app>",
-            .state = process::State::FATAL,
-            .pid = 0,
-            .exitstatus = 1,
-            .description = "error: <&> failed",
-        }).str(),
-        "<struct>"
-            + m("name",            "test<app>")
-            + m("group",           "test<app>")
-            + m("statename",       "FATAL")
-            + m("state",           200)
-            + m("pid",             0)
-            + m("exitstatus",      1)
-            + m("stdout_logfile",  "")
-            + m("spawnerr",        "")
-            + m("description",     "error: <&> failed")
-            + "</struct>");
+    {
+        process::ProcessInfo info;
+        info.name = "test<app>";
+        info.state = process::State::FATAL;
+        info.pid = 0;
+        info.exitstatus = 1;
+        info.description = "error: <&> failed";
+
+        BOOST_CHECK_EQUAL(
+            wrap(info).str(),
+            Struct({
+                Member("name",            "test<app>"),
+                Member("group",           "test<app>"),
+                Member("statename",       "FATAL"),
+                Member("state",           200),
+                Member("pid",             0),
+                Member("exitstatus",      1),
+                Member("stdout_logfile",  ""),
+                Member("spawnerr",        ""),
+                Member("description",     "error: <&> failed"),
+            }).str()
+        );
+    }
 }

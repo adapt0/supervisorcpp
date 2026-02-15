@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <map>
+#include <unistd.h>
 
 namespace supervisorcpp::util {
 

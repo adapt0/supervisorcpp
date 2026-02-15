@@ -82,9 +82,7 @@ private:
 /// XML RPC to ostream boiler plate
 template <typename T>
 struct XmlFromT {
-    friend std::ostream& operator<<(std::ostream& outs, const XmlFromT<T>& from);
-
-    XmlFromT(const T& value) : value_{value} { }
+    explicit XmlFromT(const T& value_arg) : value{value_arg} { }
 
     XmlFromT(XmlFromT&&) = delete;
     XmlFromT& operator=(XmlFromT&&) = delete;
@@ -95,9 +93,12 @@ struct XmlFromT {
         return (std::ostringstream{} << *this).str();
     }
 
-private:
-    const T& value_;
+    const T& value;
 };
+
+// Specific overloads defined in xmlrpc.cpp
+std::ostream& operator<<(std::ostream& outs, const XmlFromT<process::ProcessInfo>& from);
+std::ostream& operator<<(std::ostream& outs, const XmlFromT<std::vector<process::ProcessInfo>>& from);
 
 template <typename T>
 inline XmlFromT<T> wrap(const T& value) {
