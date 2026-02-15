@@ -1,0 +1,38 @@
+#pragma once
+#ifndef SUPERVISOR_APP__SUPERVISORD
+#define SUPERVISOR_APP__SUPERVISORD
+
+#include "daemon_state.h"
+#include "config/config_types.h"
+#include "process/process_manager.h"
+#include "rpc/rpc_server.h"
+#include <atomic>
+#include <memory>
+
+namespace supervisorcpp {
+
+class Supervisord {
+public:
+    explicit Supervisord(const config::Configuration& config);
+    ~Supervisord();
+
+    Supervisord(const Supervisord&) = delete;
+    Supervisord& operator=(const Supervisord&) = delete;
+    Supervisord(Supervisord&&) = delete;
+    Supervisord& operator=(Supervisord&&) = delete;
+
+    int run();
+
+private:
+    void register_rpc_handlers_();
+
+    boost::asio::io_context                 io_context_;
+    config::Configuration                   config_;
+    std::atomic<DaemonState>                daemon_state_{DaemonState::RUNNING};
+    process::ProcessManager                 process_manager_;
+    std::shared_ptr<rpc::RpcServer>         rpc_server_ptr_;
+};
+
+} // namespace supervisorcpp
+
+#endif // SUPERVISOR_APP__SUPERVISORD

@@ -7,8 +7,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <boost/program_options.hpp>
 #include <boost/asio.hpp>
+#include <boost/program_options.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
@@ -223,6 +223,9 @@ private:
 
             socket.close();
 
+            // Check for XML-RPC fault response
+            check_fault_(response_str);
+
             return response_str;
 
         } catch (const std::exception& e) {
@@ -319,6 +322,29 @@ private:
         oss << "\r\n";
         oss << body;
         return oss.str();
+    }
+
+    static void check_fault_(const std::string& xml) {
+        namespace pt = boost::property_tree;
+        pt::ptree tree;
+        {
+            std::istringstream iss(xml);
+            pt::read_xml(iss, tree);
+        }
+
+        const auto fault_struct = tree.get_child_optional("methodResponse.fault.value.struct");
+        if (!fault_struct) return;
+
+        for (const auto& member : *fault_struct) {
+            if (member.first != "member") continue;
+            if (member.second.get<std::string>("name", "") != "faultString") continue;
+
+            throw std::runtime_error(
+                member.second.get<std::string>("value.string", "Unknown RPC fault")
+            );
+        }
+
+        throw std::runtime_error("Unknown RPC fault");
     }
 
     std::string socket_path_;

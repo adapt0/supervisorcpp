@@ -1,12 +1,167 @@
-#include "rpc_handlers.h"
+#include "supervisord.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
-#include "process/process_manager.h"
-#include "rpc/rpc_server.h"
-#include <boost/program_options.hpp>
-#include <boost/asio.hpp>
+#include "rpc/xmlrpc.h"
 #include <iostream>
 #include <csignal>
+#include <boost/program_options.hpp>
+
+namespace supervisorcpp {
+
+Supervisord::Supervisord(const config::Configuration& config)
+: config_{config}
+, process_manager_{io_context_}
+, rpc_server_ptr_{rpc::RpcServer::create(io_context_, config_.unix_http_server.socket_file.string())}
+{
+    for (const auto& prog : config_.programs) {
+        process_manager_.add_process(prog);
+    }
+}
+
+Supervisord::~Supervisord() = default;
+
+int Supervisord::run() {
+    LOG_INFO << "supervisord starting (C++ version 0.1.0)";
+    LOG_INFO << "Socket file: " << config_.unix_http_server.socket_file;
+    LOG_INFO << "Found " << config_.programs.size() << " program(s) to manage";
+
+    for (const auto& prog : config_.programs) {
+        LOG_INFO << "  - " << prog.name << ": " << prog.command;
+    }
+
+    // Setup signal handlers for SIGTERM and SIGINT
+    boost::asio::signal_set signals(io_context_, SIGTERM, SIGINT);
+    signals.async_wait([this](const boost::system::error_code& error, int signal_number) {
+        if (!error) {
+            LOG_INFO << "Received shutdown signal (" << signal_number << ")";
+            daemon_state_.store(DaemonState::SHUTDOWN);
+            process_manager_.stop_all();
+            io_context_.stop();
+        }
+    });
+
+    // Ignore SIGPIPE
+    std::signal(SIGPIPE, SIG_IGN);
+
+    // Register RPC handlers and start server
+    register_rpc_handlers_();
+    rpc_server_ptr_->start();
+
+    // Start all processes
+    LOG_INFO << "Starting all configured processes";
+    process_manager_.start_all();
+
+    // Run event loop
+    LOG_INFO << "Main event loop starting";
+    io_context_.run();
+
+    // Cleanup
+    rpc_server_ptr_->stop();
+    LOG_INFO << "supervisord shutting down";
+
+    return 0;
+}
+
+void Supervisord::register_rpc_handlers_() {
+    using rpc::RpcParams;
+    using namespace xmlrpc;
+
+    rpc_server_ptr_->register_handler("supervisor.getState", [this](const RpcParams&) {
+        const auto state = daemon_state_.load();
+        return Struct{
+            Member{"statecode", static_cast<int>(state)},
+            Member{"statename", daemon_state_name(state)},
+        }.str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.getAllProcessInfo", [this](const RpcParams&) {
+        return wrap( process_manager_.get_all_process_info() ).str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.getProcessInfo", [this](const RpcParams& params) {
+        if (params.empty()) throw std::runtime_error("Process name required");
+        const auto* proc = process_manager_.get_process(params[0]);
+        if (!proc) throw std::runtime_error("Process not found: " + params[0]);
+
+        return wrap( proc->get_info() ).str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.startProcess", [this](const RpcParams& params) {
+        if (params.empty()) throw std::runtime_error("Process name required");
+        const auto& name = params[0];
+        const auto* proc = process_manager_.get_process(name);
+        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
+        const auto st = proc->state();
+        if (st == process::State::RUNNING || st == process::State::STARTING) {
+            throw std::runtime_error("ALREADY_STARTED: " + name);
+        }
+        if (!process_manager_.start_process(name)) {
+            throw std::runtime_error("SPAWN_ERROR: " + name);
+        }
+        return Value{true}.str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.stopProcess", [this](const RpcParams& params) {
+        if (params.empty()) throw std::runtime_error("Process name required");
+        const auto& name = params[0];
+        const auto* proc = process_manager_.get_process(name);
+        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
+        const auto st = proc->state();
+        if (st == process::State::STOPPED || st == process::State::EXITED || st == process::State::FATAL) {
+            throw std::runtime_error("NOT_RUNNING: " + name);
+        }
+        if (!process_manager_.stop_process(name)) {
+            throw std::runtime_error("NOT_RUNNING: " + name);
+        }
+        return Value{true}.str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.startAllProcesses", [this](const RpcParams&) {
+        process_manager_.start_all();
+        return wrap( process_manager_.get_all_process_info() ).str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.stopAllProcesses", [this](const RpcParams&) {
+        process_manager_.stop_all();
+        return wrap( process_manager_.get_all_process_info() ).str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.restart", [this](const RpcParams& params) {
+        if (params.empty()) throw std::runtime_error("Process name required");
+        const auto& name = params[0];
+        if (!process_manager_.get_process(name)) throw std::runtime_error("BAD_NAME: " + name);
+        if (!process_manager_.restart_process(name)) {
+            throw std::runtime_error("SPAWN_ERROR: " + name);
+        }
+        return Value{true}.str();
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.shutdown", [this](const RpcParams&) {
+        boost::asio::post(io_context_, [this]() {
+            process_manager_.stop_all();
+            io_context_.stop();
+        });
+        return Value{true}.str();
+    });
+
+    // Compatibility stubs for Python supervisorctl handshake
+    const auto api_version = [](const RpcParams&) -> std::string {
+        return "<string>3.0</string>";
+    };
+    rpc_server_ptr_->register_handler("supervisor.getVersion", api_version);
+    rpc_server_ptr_->register_handler("supervisor.getSupervisorVersion", api_version);
+    rpc_server_ptr_->register_handler("supervisor.getAPIVersion", api_version);
+
+    rpc_server_ptr_->register_handler("supervisor.getIdentification", [](const RpcParams&) -> std::string {
+        return "<string>supervisor</string>";
+    });
+
+    rpc_server_ptr_->register_handler("supervisor.getPID", [](const RpcParams&) -> std::string {
+        return "<int>" + std::to_string(getpid()) + "</int>";
+    });
+}
+
+} // namespace supervisorcpp
 
 int supervisord_main(int argc, char* argv[]) {
     using namespace supervisorcpp;
@@ -14,7 +169,6 @@ int supervisord_main(int argc, char* argv[]) {
     try {
         namespace po = boost::program_options;
 
-        // Parse command line options
         po::options_description desc("supervisord - process control system");
         desc.add_options()
             ("help,h", "Show this help message")
@@ -39,76 +193,18 @@ int supervisord_main(int argc, char* argv[]) {
         }
 
         const auto config_file = vm["config"].as<std::string>();
-        const bool nodaemon = vm.count("nodaemon") > 0;
 
-        // Load configuration
         std::cout << "Loading configuration from: " << config_file << std::endl;
-        config::Configuration config = config::ConfigParser::parse_file(config_file);
+        const auto config = config::ConfigParser::parse_file(config_file);
 
-        // Initialize logging
         logger::init_logging(config.supervisord.logfile, config.supervisord.loglevel);
-
-        LOG_INFO << "supervisord starting (C++ version 0.1.0)";
         LOG_INFO << "Configuration file: " << config_file;
-        LOG_INFO << "Socket file: " << config.unix_http_server.socket_file;
-        LOG_INFO << "Found " << config.programs.size() << " program(s) to manage";
 
-        // Log program information
-        for (const auto& prog : config.programs) {
-            LOG_INFO << "  - " << prog.name << ": " << prog.command;
-        }
+        Supervisord daemon(config);
+        const int rc = daemon.run();
 
-        // Create IO context for async operations
-        boost::asio::io_context io_context;
-
-        // Create process manager
-        process::ProcessManager process_manager(io_context);
-
-        // Add all configured processes
-        for (const auto& prog : config.programs) {
-            process_manager.add_process(prog);
-        }
-
-        // Setup signal handlers for SIGTERM and SIGINT
-        boost::asio::signal_set signals(io_context, SIGTERM, SIGINT);
-        signals.async_wait([
-            &io_context, &process_manager
-        ](const boost::system::error_code& error, int signal_number) {
-            if (!error) {
-                LOG_INFO << "Received shutdown signal (" << signal_number << ")";
-                process_manager.stop_all();
-                io_context.stop();
-            }
-        });
-
-        // Ignore SIGPIPE
-        std::signal(SIGPIPE, SIG_IGN);
-
-        // Create and start RPC server
-        LOG_INFO << "Starting RPC server";
-        const auto rpc_server_ptr = rpc::RpcServer::create(io_context, config.unix_http_server.socket_file.string());
-        rpc::register_supervisor_handlers(*rpc_server_ptr, process_manager, io_context);
-        rpc_server_ptr->start();
-
-        // Start all processes
-        LOG_INFO << "Starting all configured processes";
-        process_manager.start_all();
-
-        if (nodaemon) {
-            std::cout << "supervisord started successfully (press Ctrl+C to stop)" << std::endl;
-        }
-
-        // Run event loop
-        LOG_INFO << "Main event loop starting";
-        io_context.run();
-
-        // Stop RPC server
-        rpc_server_ptr->stop();
-
-        LOG_INFO << "supervisord shutting down";
         logger::shutdown_logging();
-
-        return 0;
+        return rc;
 
     } catch (const config::ConfigParseError& e) {
         std::cerr << "Configuration error: " << e.what() << std::endl;
