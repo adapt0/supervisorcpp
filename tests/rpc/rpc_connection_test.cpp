@@ -172,6 +172,89 @@ BOOST_FIXTURE_TEST_CASE(rpc_connection__request_size_limit, ConnectionFixture) {
     BOOST_CHECK(response.find("Request too large") != std::string::npos);
 }
 
+BOOST_FIXTURE_TEST_CASE(rpc_connection__split_body_waits_for_content_length, ConnectionFixture) {
+    std::string received_method;
+    start([&](const std::string& method, const rpc::RpcParams&) {
+        received_method = method;
+        return "<string>split-ok</string>";
+    });
+
+    const auto xml = make_xmlrpc_call("supervisor.getState");
+    const auto request = make_http_request(xml);
+
+    // Split in the middle of the XML body (well past the header boundary)
+    const auto header_end = request.find("\r\n\r\n") + 4;
+    const auto split = header_end + xml.size() / 2;
+
+    // Send first half (headers + partial body)
+    boost::asio::write(client, boost::asio::buffer(request.data(), split));
+
+    // Let the server read this chunk — it should NOT dispatch yet
+    io.poll();
+    io.restart();
+    BOOST_CHECK(received_method.empty());
+
+    // Send the rest
+    boost::asio::write(client, boost::asio::buffer(request.data() + split, request.size() - split));
+    client.shutdown(boost::asio::local::stream_protocol::socket::shutdown_send);
+
+    io.run();
+    io.restart();
+
+    // Read response
+    boost::asio::streambuf response_buf;
+    boost::system::error_code ec;
+    boost::asio::read(client, response_buf, ec);
+    const auto response = std::string(
+        boost::asio::buffers_begin(response_buf.data()),
+        boost::asio::buffers_end(response_buf.data()));
+
+    BOOST_CHECK_EQUAL(received_method, "supervisor.getState");
+    BOOST_CHECK(response.find("split-ok") != std::string::npos);
+}
+
+BOOST_FIXTURE_TEST_CASE(rpc_connection__response_content_length_matches_body, ConnectionFixture) {
+    start([](const std::string&, const rpc::RpcParams&) {
+        return "<string>exact-length</string>";
+    });
+
+    const auto response = call("supervisor.getState");
+
+    // Parse Content-Length from response headers
+    const auto cl_pos = response.find("Content-Length: ");
+    BOOST_REQUIRE(cl_pos != std::string::npos);
+    const auto cl_value = std::stoull(response.substr(cl_pos + 16));
+
+    // Actual body starts after \r\n\r\n
+    const auto body_start = response.find("\r\n\r\n");
+    BOOST_REQUIRE(body_start != std::string::npos);
+    const auto actual_body_size = response.size() - (body_start + 4);
+
+    BOOST_CHECK_EQUAL(cl_value, actual_body_size);
+}
+
+BOOST_FIXTURE_TEST_CASE(rpc_connection__no_content_length_means_empty_body, ConnectionFixture) {
+    start([](const std::string&, const rpc::RpcParams&) -> std::string {
+        BOOST_FAIL("Dispatcher should not be called with empty body");
+        return "";
+    });
+
+    // Build request without Content-Length — body is zero per RFC 7230 §3.3.3,
+    // even though XML bytes follow the headers. They must be ignored.
+    const auto xml = make_xmlrpc_call("supervisor.getState");
+    std::string request;
+    request += "POST /RPC2 HTTP/1.1\r\n";
+    request += "Content-Type: text/xml\r\n";
+    request += "Connection: close\r\n";
+    request += "\r\n";
+    request += xml;
+
+    const auto response = send_and_receive(io, client, request);
+
+    // Empty body → XML parse failure → fault response
+    BOOST_CHECK(response.find("<fault>") != std::string::npos);
+}
+
 BOOST_AUTO_TEST_CASE(rpc_connection__unix_socket_accept) {
     auto sock_file = TempManager::file("rpc_accept.sock");
 

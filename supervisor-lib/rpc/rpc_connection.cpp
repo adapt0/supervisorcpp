@@ -1,6 +1,7 @@
 #include "rpc_connection.h"
 #include "xmlrpc.h"
 #include "../logger/logger.h"
+#include <boost/algorithm/string.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 
@@ -28,7 +29,8 @@ void RpcConnection::begin_read_() {
 }
 
 void RpcConnection::handle_read_(const boost::system::error_code& error, size_t bytes_transferred) {
-    if (error) return;  // Connection closed or error
+    const bool got_eof = (error == boost::asio::error::eof);
+    if (error && !got_eof) return;
 
     // SECURITY/ROBUSTNESS: Limit maximum request size to 1MB to prevent memory exhaustion
     constexpr size_t MAX_REQUEST_SIZE = 1024 * 1024;  // 1MB
@@ -45,15 +47,41 @@ void RpcConnection::handle_read_(const boost::system::error_code& error, size_t 
 
     request_data_.append(buffer_.data(), bytes_transferred);
 
-    // Check if we have complete HTTP request (ends with \r\n\r\n or \n\n)
-    if (request_data_.find("\r\n\r\n") != std::string::npos ||
-        request_data_.find("\n\n") != std::string::npos) {
+    // Find end of HTTP headers
+    size_t header_end = request_data_.find("\r\n\r\n");
+    size_t body_offset = (header_end != std::string::npos) ? header_end + 4 : std::string::npos;
 
-        process_request_(request_data_);
-    } else {
-        // Continue reading
-        begin_read_();
+    if (body_offset == std::string::npos) {
+        header_end = request_data_.find("\n\n");
+        body_offset = (header_end != std::string::npos) ? header_end + 2 : std::string::npos;
     }
+
+    if (body_offset == std::string::npos) {
+        if (!got_eof) begin_read_();
+        return;
+    }
+
+    // Parse Content-Length to determine body size (case-insensitive per RFC 7230).
+    // Without Content-Length: body length is zero per RFC 7230 §3.3.3.
+    const auto headers = std::string_view{request_data_}.substr(0, header_end);
+    const auto cl_range = boost::ifind_first(headers, "content-length:");
+
+    size_t content_length = 0;
+    if (!cl_range.empty()) {
+        const auto after_name = static_cast<size_t>(cl_range.end() - headers.begin());
+        const auto val_start = headers.find_first_not_of(" \t", after_name);
+        if (val_start != std::string_view::npos) {
+            content_length = std::stoull(std::string{headers.substr(val_start)});
+        }
+        if (request_data_.size() - body_offset < content_length) {
+            if (!got_eof) begin_read_();
+            return;
+        }
+    }
+
+    // Trim to exactly headers + content_length bytes
+    request_data_.resize(body_offset + content_length);
+    process_request_(request_data_);
 }
 
 void RpcConnection::process_request_(const std::string& request) {
