@@ -242,6 +242,15 @@ private:
 
             return response_str;
 
+        } catch (const boost::system::system_error& e) {
+            if (e.code() == boost::asio::error::connection_refused) {
+                throw std::runtime_error("Connection refused — is supervisord running?");
+            }
+            if (e.code().category() == boost::system::system_category()) {
+                throw std::runtime_error("Connection failed: " + std::string(e.code().message())
+                    + " (" + socket_path_ + ")");
+            }
+            throw std::runtime_error("RPC error: " + std::string(e.code().message()));
         } catch (const std::exception& e) {
             throw std::runtime_error("RPC error: " + std::string(e.what()));
         }
