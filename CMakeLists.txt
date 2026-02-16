@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(supervisorcpp LANGUAGES CXX)
+project(supervisorcpp VERSION 26.02.0 LANGUAGES CXX)
 
 # C++23 standard
 set(CMAKE_CXX_STANDARD 23)
@@ -55,6 +55,17 @@ target_link_libraries(supervisor_lib PUBLIC
     Boost::program_options
 )
 
+# Generate version.h at build time with current git revision
+add_custom_target(git_version ALL
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DPROJECT_VERSION=${PROJECT_VERSION}
+        -DINPUT_FILE=${CMAKE_SOURCE_DIR}/cmake/version.h.in
+        -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/generated/version.h
+        -P ${CMAKE_SOURCE_DIR}/cmake/GitVersion.cmake
+    COMMENT "Checking git revision"
+)
+
 # Unified supervisor binary (busybox-style multi-call binary)
 add_executable(supervisor
     supervisor-app/main.cpp
@@ -62,6 +73,8 @@ add_executable(supervisor
     supervisor-app/supervisorctl.cpp
 )
 target_link_libraries(supervisor PRIVATE supervisor_lib)
+target_include_directories(supervisor PRIVATE ${CMAKE_BINARY_DIR}/generated)
+add_dependencies(supervisor git_version)
 
 # Create symlinks in build directory for testing/development
 add_custom_command(TARGET supervisor POST_BUILD

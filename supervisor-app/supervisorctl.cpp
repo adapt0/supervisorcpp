@@ -1,3 +1,4 @@
+#include "version.h"
 #include "config/config_parser.h"
 #include "rpc/rpc_fwd.h"
 #include "rpc/xmlrpc.h"
@@ -415,7 +416,7 @@ int supervisorctl_main(int argc, char* argv[]) {
         }
 
         if (vm.count("version")) {
-            std::cout << "supervisorctl 0.1.0 (C++ minimal replacement)" << std::endl;
+            std::cout << supervisorcpp::VERSION_STR << std::endl;
             return 0;
         }
 
