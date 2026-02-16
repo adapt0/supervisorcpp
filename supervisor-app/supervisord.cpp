@@ -1,4 +1,5 @@
 #include "supervisord.h"
+#include "version.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
 #include "rpc/xmlrpc.h"
@@ -22,14 +23,6 @@ Supervisord::Supervisord(const config::Configuration& config)
 Supervisord::~Supervisord() = default;
 
 int Supervisord::run() {
-    LOG_INFO << "supervisord starting (C++ version 0.1.0)";
-    LOG_INFO << "Socket file: " << config_.unix_http_server.socket_file;
-    LOG_INFO << "Found " << config_.programs.size() << " program(s) to manage";
-
-    for (const auto& prog : config_.programs) {
-        LOG_INFO << "  - " << prog.name << ": " << prog.command;
-    }
-
     // Setup signal handlers for SIGTERM and SIGINT
     boost::asio::signal_set signals(io_context_, SIGTERM, SIGINT);
     signals.async_wait([this](const boost::system::error_code& error, int signal_number) {
@@ -48,12 +41,15 @@ int Supervisord::run() {
     register_rpc_handlers_();
     rpc_server_ptr_->start();
 
+    LOG_INFO << "Supervising " << config_.programs.size() << " program(s)";
+    for (const auto& prog : config_.programs) {
+        LOG_INFO << "- " << prog.name << ": " << prog.command;
+    }
+
     // Start all processes
-    LOG_INFO << "Starting all configured processes";
     process_manager_.start_all();
 
     // Run event loop
-    LOG_INFO << "Main event loop starting";
     io_context_.run();
 
     // Cleanup
@@ -167,6 +163,8 @@ void Supervisord::register_rpc_handlers_() {
 int supervisord_main(int argc, char* argv[]) {
     using namespace supervisorcpp;
 
+    logger::init_logging();
+
     try {
         namespace po = boost::program_options;
 
@@ -189,15 +187,24 @@ int supervisord_main(int argc, char* argv[]) {
         }
 
         if (vm.count("version")) {
-            std::cout << "supervisord 0.1.0 (C++ minimal replacement)" << std::endl;
+            std::cout << VERSION_STR << std::endl;
             return 0;
         }
 
+        LOG_INFO << VERSION_STR;
+
         const auto config_file = vm["configuration"].as<std::string>();
+        LOG_INFO << "Config: " << config_file;
         const auto config = config::ConfigParser::parse_file(config_file);
 
-        logger::init_logging(config.supervisord.logfile, config.supervisord.loglevel);
-        LOG_INFO << "Configuration file: " << config_file;
+        LOG_INFO << "Log: " << config.supervisord.logfile.string() << " (" << config.supervisord.loglevel << ")";
+        logger::init_file_logging(
+            config.supervisord.logfile,
+            config.supervisord.loglevel,
+            config.supervisord.logfile_maxbytes,
+            config.supervisord.logfile_backups,
+            VERSION_STR
+        );
 
         // Create pidfile guard (command-line overrides config file)
         // std::optional<util::PidFileGuard> pidfile_guard;

@@ -32,6 +32,9 @@ std::ostream& operator<<(std::ostream& outs, State state) {
     return outs << "Unknown (" << static_cast<int>(state) << ')';
 }
 
+std::ostream& operator<<(std::ostream& outs, const Process& process) {
+    return outs << "'" << process.name() << "' ";
+}
 
 Process::Process(boost::asio::io_context& io_context, const config::ProgramConfig& config)
 : config_(config)
@@ -51,12 +54,12 @@ Process::Process(boost::asio::io_context& io_context, const config::ProgramConfi
         );
     }
 
-    LOG_INFO << "Process '" << config_.name << "' created";
+    LOG_TRACE << *this << "Created";
 }
 
 Process::~Process() {
     if (pid_ > 0) {
-        LOG_WARN << "Process '" << config_.name << "' destroyed while running (pid " << pid_ << "), killing";
+        LOG_WARN << *this << "Destroyed while running (pid " << pid_ << "), killing";
         kill();
     }
 
@@ -72,24 +75,22 @@ Process::~Process() {
 
 bool Process::start() {
     if (state_ == State::RUNNING || state_ == State::STARTING) {
-        LOG_WARN << "Process '" << config_.name << "' already running or starting";
+        LOG_WARN << *this << "Already running or starting";
         return false;
     }
 
-    LOG_INFO << "Starting process '" << config_.name << "'";
+    LOG_DEBUG << *this << "Starting";
 
     const pid_t child_pid = spawn_();
     if (child_pid < 0) {
-        LOG_ERROR << "Failed to spawn process '" << config_.name << "': " << spawn_error_;
+        LOG_ERROR << *this << "Failed to spawn process - " << spawn_error_;
 
         retry_count_++;
         if (retry_count_ >= config_.startretries) {
-            LOG_ERROR << "Process '" << config_.name << "' failed to start after "
-                     << retry_count_ << " retries, entering FATAL state";
+            LOG_ERROR << *this << "failed to start after " << retry_count_ << " retries, entering FATAL state";
             set_state_(State::FATAL);
         } else {
-            LOG_INFO << "Process '" << config_.name << "' will retry starting (attempt "
-                    << retry_count_ + 1 << " of " << config_.startretries << ")";
+            LOG_INFO << *this << "Will retry starting (attempt " << retry_count_ + 1 << " of " << config_.startretries << ")";
             set_state_(State::BACKOFF);
         }
         return false;
@@ -99,17 +100,17 @@ bool Process::start() {
     start_time_ = std::chrono::steady_clock::now();
     set_state_(State::STARTING);
 
-    LOG_INFO << "Process '" << config_.name << "' started with pid " << pid_;
+    LOG_INFO << *this << "Started with pid " << pid_;
     return true;
 }
 
 bool Process::stop() {
     if (pid_ <= 0 || state_ == State::STOPPED) {
-        LOG_WARN << "Process '" << config_.name << "' not running";
+        LOG_WARN << *this << "Not running";
         return false;
     }
 
-    LOG_INFO << "Stopping process '" << config_.name << "' (pid " << pid_ << ")";
+    LOG_DEBUG << *this << "Stopping (pid " << pid_ << ")";
     set_state_(State::STOPPING);
     stop_time_ = std::chrono::steady_clock::now();
 
@@ -123,10 +124,10 @@ bool Process::stop() {
     }();
 
     if (::kill(pid_, sig) == 0) {
-        LOG_DEBUG << "Sent signal " << sig << " to process " << pid_;
+        LOG_DEBUG << *this << "Sent signal " << sig;
         return true;
     } else {
-        LOG_ERROR << "Failed to send signal to process " << pid_ << ": " << strerror(errno);
+        LOG_ERROR << *this << "Failed to send signal to process - " << strerror(errno);
         return false;
     }
 }
@@ -134,7 +135,7 @@ bool Process::stop() {
 void Process::kill() {
     if (pid_ <= 0) return;
 
-    LOG_INFO << "Killing process '" << config_.name << "' (pid " << pid_ << ")";
+    LOG_INFO << *this << "Killing process (pid " << pid_ << ")";
     ::kill(pid_, SIGKILL);
 
     // Wait for process to exit
@@ -150,13 +151,11 @@ void Process::on_exit(int exit_status) {
 
     if (WIFEXITED(exit_status)) {
         const int code = WEXITSTATUS(exit_status);
-        LOG_INFO << "Process '" << config_.name << "' (pid " << pid_
-                << ") exited with code " << code;
+        LOG_INFO << *this << "(pid " << pid_ << ") exited with code " << code;
         exitstatus_ = code;
     } else if (WIFSIGNALED(exit_status)) {
         const int sig = WTERMSIG(exit_status);
-        LOG_INFO << "Process '" << config_.name << "' (pid " << pid_
-                << ") killed by signal " << sig;
+        LOG_INFO << *this << "(pid " << pid_ << ") killed by signal " << sig;
         exitstatus_ = -sig;
     }
 
@@ -169,12 +168,11 @@ void Process::on_exit(int exit_status) {
         retry_count_ = 0;  // Reset retry count on clean stop
     } else if (should_autorestart()) {
         // Unexpected exit with autorestart
-        LOG_INFO << "Process '" << config_.name << "' will be restarted";
+        LOG_DEBUG << *this << "Will be restarted";
         retry_count_++;
 
         if (retry_count_ >= config_.startretries) {
-            LOG_ERROR << "Process '" << config_.name << "' failed after "
-                     << retry_count_ << " retries, entering FATAL state";
+            LOG_ERROR << *this << "Failed after " << retry_count_ << " retries, entering FATAL state";
             set_state_(State::FATAL);
         } else {
             set_state_(State::BACKOFF);
@@ -193,7 +191,6 @@ void Process::update() {
     case State::STARTING:
         // Check if process has been running long enough to be considered "started"
         if (elapsed >= config_.startsecs) {
-            LOG_INFO << "Process '" << config_.name << "' successfully started";
             set_state_(State::RUNNING);
             retry_count_ = 0;  // Reset retry count on successful start
         }
@@ -202,7 +199,7 @@ void Process::update() {
     case State::STOPPING:
         // Check if we need to SIGKILL after timeout
         if (elapsed >= config_.stopwaitsecs) {
-            LOG_WARN << "Process '" << config_.name << "' did not stop gracefully, sending SIGKILL";
+            LOG_WARN << *this << "Did not stop gracefully, sending SIGKILL";
             ::kill(pid_, SIGKILL);
         }
         break;
@@ -210,7 +207,7 @@ void Process::update() {
     case State::BACKOFF:
         // Wait a bit before retrying (exponential backoff could be added here)
         if (elapsed >= 1) {  // Wait 1 second before retry
-            LOG_INFO << "Retrying start of process '" << config_.name << "'";
+            LOG_INFO << *this << "Retrying starting of process";
             start();
         }
         break;
@@ -361,7 +358,7 @@ pid_t Process::spawn_() {
             start_stdout_read_();
 
         } catch (const std::exception& e) {
-            LOG_ERROR << "Failed to setup async reading for stdout: " << e.what();
+            LOG_ERROR << *this << "Failed to setup async reading for stdout - " << e.what();
             close(stdout_pipe[0]);
         }
     } else if (stdout_pipe[0] >= 0) {
@@ -370,9 +367,7 @@ pid_t Process::spawn_() {
     }
 
     // For now, we don't handle stderr separately (redirect_stderr handles it)
-    if (stderr_pipe[0] >= 0) {
-        close(stderr_pipe[0]);
-    }
+    if (stderr_pipe[0] >= 0) close(stderr_pipe[0]);
 
     return child_pid;
 }
@@ -391,7 +386,7 @@ void Process::setup_child_process_() {
 
     // Setup working directory
     if (!setup_working_directory_()) {
-        LOG_ERROR << "Failed to setup working directory";
+        LOG_ERROR << *this << "Failed to setup working directory";
         _exit(126);
     }
 
@@ -400,7 +395,7 @@ void Process::setup_child_process_() {
 
     // Switch user (must be last before exec)
     if (!switch_user_()) {
-        LOG_ERROR << "Failed to switch user";
+        LOG_ERROR << *this << "Failed to switch user";
         _exit(125);
     }
 
@@ -418,7 +413,7 @@ void Process::setup_child_process_() {
     execvp(argv[0], argv.data());
 
     // If we get here, exec failed
-    LOG_ERROR << "exec failed for '" << config_.name << "': " << strerror(errno);
+    LOG_ERROR << *this << "exec failed - " << strerror(errno);
 }
 
 bool Process::switch_user_() {
@@ -429,32 +424,32 @@ bool Process::switch_user_() {
 
     // Only root can switch users
     if (getuid() != 0) {
-        LOG_WARN << "Not running as root, cannot switch to user '" << config_.user << "'";
+        LOG_WARN << *this << "Not running as root, cannot switch to user '" << config_.user << "'";
         return true;  // Continue anyway
     }
 
     // Look up user
     const auto* pwd = getpwnam(config_.user.c_str());
     if (!pwd) {
-        LOG_ERROR << "User '" << config_.user << "' not found";
+        LOG_ERROR << *this << "User '" << config_.user << "' not found";
         return false;
     }
 
     // Initialize supplementary groups
     if (initgroups(config_.user.c_str(), pwd->pw_gid) < 0) {
-        LOG_ERROR << "initgroups failed: " << strerror(errno);
+        LOG_ERROR << *this << "initgroups failed: " << strerror(errno);
         return false;
     }
 
     // Set group ID
     if (setgid(pwd->pw_gid) < 0) {
-        LOG_ERROR << "setgid failed: " << strerror(errno);
+        LOG_ERROR << *this << "setgid failed: " << strerror(errno);
         return false;
     }
 
     // Set user ID
     if (setuid(pwd->pw_uid) < 0) {
-        LOG_ERROR << "setuid failed: " << strerror(errno);
+        LOG_ERROR << *this << "setuid failed: " << strerror(errno);
         return false;
     }
 
@@ -462,12 +457,11 @@ bool Process::switch_user_() {
     try {
         util::verify_privilege_drop(pwd->pw_uid, pwd->pw_gid);
     } catch (const util::SecurityError& e) {
-        LOG_ERROR << "Privilege drop verification failed: " << e.what();
+        LOG_ERROR << *this << "Privilege drop verification failed - " << e.what();
         return false;
     }
 
-    LOG_DEBUG << "Switched to user '" << config_.user << "' (uid=" << pwd->pw_uid
-              << ", gid=" << pwd->pw_gid << ")";
+    LOG_DEBUG << *this << "Switched to user '" << config_.user << "' (uid=" << pwd->pw_uid << ", gid=" << pwd->pw_gid << ")";
 
     return true;
 }
@@ -478,11 +472,11 @@ bool Process::setup_working_directory_() {
     }
 
     if (chdir(config_.directory->string().c_str()) < 0) {
-        LOG_ERROR << "chdir to '" << config_.directory->string() << "' failed: " << strerror(errno);
+        LOG_ERROR << *this << "chdir to '" << config_.directory->string() << "' failed: " << strerror(errno);
         return false;
     }
 
-    LOG_DEBUG << "Changed to directory '" << config_.directory->string() << "'";
+    LOG_DEBUG << *this << "Changed to directory '" << config_.directory->string() << "'";
     return true;
 }
 
@@ -490,7 +484,7 @@ void Process::setup_environment_() {
     // Add configured environment variables
     for (const auto& [key, value] : config_.environment) {
         setenv(key.c_str(), value.c_str(), 1);  // 1 = overwrite
-        LOG_DEBUG << "Set environment: " << key << "=" << value;
+        LOG_DEBUG << *this << "Set environment: " << key << "=" << value;
     }
 }
 
@@ -527,7 +521,7 @@ std::vector<std::string> Process::parse_command_() const {
 
 void Process::set_state_(State new_state) {
     if (new_state != state_) {
-        LOG_DEBUG << "Process '" << config_.name << "' " << state_ << " -> " << new_state;
+        LOG_INFO << *this << state_ << " -> " << new_state;
         state_ = new_state;
         state_change_time_ = std::chrono::steady_clock::now();
     }
@@ -535,7 +529,7 @@ void Process::set_state_(State new_state) {
 
 void Process::set_spawn_error_(const std::string& error) {
     spawn_error_ = error;
-    LOG_ERROR << "Spawn error for '" << config_.name << "': " << error;
+    LOG_ERROR << *this << "Spawn error - " << error;
 }
 
 void Process::start_stdout_read_() {
@@ -555,9 +549,9 @@ void Process::handle_stdout_read_(const boost::system::error_code& error, size_t
     if (error) {
         if (error == boost::asio::error::eof) {
             // End of stream - process closed stdout
-            LOG_DEBUG << "Process '" << config_.name << "' closed stdout";
+            LOG_DEBUG << *this << "Closed stdout";
         } else if (error != boost::asio::error::operation_aborted) {
-            LOG_ERROR << "Error reading from process '" << config_.name << "' stdout: " << error.message();
+            LOG_ERROR << *this << "Error reading from process stdout - " << error.message();
         }
 
         // Close the stream

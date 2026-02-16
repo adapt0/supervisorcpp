@@ -55,7 +55,7 @@ void RpcServer::start() {
 
     acceptor_.listen();
     running_ = true;
-    LOG_INFO << "RPC server listening on " << socket_path_;
+    LOG_INFO << "RPC listening on " << socket_path_;
 
     start_accept_();
 }
@@ -67,7 +67,7 @@ void RpcServer::stop() {
     acceptor_.close();
     ::unlink(socket_path_.c_str());
 
-    LOG_INFO << "RPC server stopped";
+    LOG_INFO << "RPC stopped";
 }
 
 void RpcServer::start_accept_() {

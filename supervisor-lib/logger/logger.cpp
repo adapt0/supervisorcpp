@@ -1,6 +1,8 @@
 #include "logger.h"
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
+#include <boost/log/attributes/constant.hpp>
+#include <boost/log/attributes/scoped_attribute.hpp>
 #include <boost/log/sinks/text_file_backend.hpp>
 #include <boost/log/sinks/text_ostream_backend.hpp>
 #include <boost/log/utility/setup/file.hpp>
@@ -31,22 +33,34 @@ boost::log::trivial::severity_level to_boost_severity(LogLevel level) {
     return boost::log::trivial::info;
 }
 
+BOOST_LOG_ATTRIBUTE_KEYWORD(file_only, "FileOnly", bool)
+
 } // anonymous namespace
 
-void init_logging(const std::filesystem::path& logfile, LogLevel level) {
+void init_logging() {
     // Add common attributes (timestamp, thread id, etc.)
     logging::add_common_attributes();
 
-    // Console sink (for debugging)
-    auto console_sink = logging::add_console_log(
+    // Console sink — filter out records tagged as file-only
+    auto console = logging::add_console_log(
         std::clog,
         keywords::format = "[%TimeStamp%] [%Severity%] %Message%"
     );
+    console->set_filter(!expr::has_attr(file_only));
+}
 
-    // File sink
-    auto file_sink = logging::add_file_log(
+void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
+                       size_t max_bytes, int backups,
+                       std::string_view header) {
+    if (logfile.empty()) return;
+
+    // File sink with rotation and collection
+    logging::add_file_log(
         keywords::file_name = logfile.string(),
-        keywords::rotation_size = 10 * 1024 * 1024, // 10 MB
+        keywords::open_mode = std::ios::app,
+        keywords::rotation_size = max_bytes,
+        keywords::target = logfile.parent_path().string(),
+        keywords::max_files = static_cast<unsigned>(std::max(backups, 0)),
         keywords::auto_flush = true,
         keywords::format = "[%TimeStamp%] [%Severity%] %Message%"
     );
@@ -56,11 +70,16 @@ void init_logging(const std::filesystem::path& logfile, LogLevel level) {
         logging::trivial::severity >= to_boost_severity(level)
     );
 
-    LOG_INFO << "Logging initialized: " << logfile.string() << " (level: " << level << ")";
+    // Write delimiting header to file only
+    if (!header.empty()) {
+        BOOST_LOG_SCOPED_THREAD_ATTR("FileOnly", logging::attributes::constant<bool>(true));
+        LOG_INFO << "------------------------------------------------------------";
+        LOG_INFO << header;
+    }
 }
 
 void shutdown_logging() {
-    LOG_INFO << "Shutting down logging system";
+    LOG_TRACE << "Shutting down logging system";
     logging::core::get()->remove_all_sinks();
 }
 

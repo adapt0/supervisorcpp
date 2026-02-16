@@ -65,6 +65,8 @@ struct UnixHttpServerConfig {
  */
 struct SupervisordConfig {
     std::filesystem::path logfile{"/var/log/supervisord.log"};
+    size_t logfile_maxbytes{50 * 1024 * 1024}; // 50MB default
+    int logfile_backups{10};
     logger::LogLevel loglevel{logger::LogLevel::INFO};
     std::string user{"root"};
     std::filesystem::path childlogdir{"/var/log/supervisor"};

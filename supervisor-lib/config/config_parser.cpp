@@ -1,5 +1,6 @@
 #include "config_parser.h"
 #include "ptree_ext.h"
+#include "../logger/logger.h"
 #include "../util/secure.h"
 #include "../util/string.h"
 #include <algorithm>
@@ -125,6 +126,12 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
     if (const auto section = tree.get_child_optional("supervisord")) {
         pt_get(section, "childlogdir", config.supervisord.childlogdir);
         pt_get(section, "logfile",     config.supervisord.logfile);
+        pt_get(section, "logfile_maxbytes", config.supervisord.logfile_maxbytes, [](const std::string& s) -> size_t {
+            try { return parse_size(s); } catch (const std::invalid_argument& e) {
+                throw ConfigParseError("[supervisord] logfile_maxbytes: " + std::string(e.what()));
+            }
+        });
+        pt_get(section, "logfile_backups", config.supervisord.logfile_backups);
         pt_get(section, "loglevel",    config.supervisord.loglevel, [](const auto& str) {
             try {
                 return logger::parse_log_level(str);
@@ -233,6 +240,7 @@ void ConfigParser::parse_includes_(const fs::path& base_dir,
     for (const auto& pattern : patterns) {
         const auto files = expand_glob_(base_dir, pattern);
         for (const auto& file : files) {
+            LOG_INFO << "Config including: " << file;
             parse_single_file_(file, config, depth);
         }
     }

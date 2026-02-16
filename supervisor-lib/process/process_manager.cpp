@@ -14,27 +14,29 @@ ProcessManager::ProcessManager(boost::asio::io_context& io_context,
 , timer_(io_context)
 , update_interval_(update_interval)
 {
-    LOG_INFO << "ProcessManager initialized";
     begin_signal_handler_();
     begin_update_timer_();
+    LOG_TRACE << "ProcessManager initialized";
 }
 
 ProcessManager::~ProcessManager() {
-    LOG_INFO << "ProcessManager shutting down";
+    LOG_TRACE << "ProcessManager shutting down";
     stop_all();
+    LOG_TRACE << "ProcessManager shut down";
 }
 
 void ProcessManager::add_process(const config::ProgramConfig& config) {
     auto process_uptr = std::make_unique<Process>(io_context_, config);
-    Process* proc_raw = process_uptr.get();
+    auto* proc_raw = process_uptr.get();
 
     processes_.push_back(std::move(process_uptr));
     process_map_[config.name] = proc_raw;
 
-    LOG_INFO << "Added process '" << config.name << "' to manager";
+    LOG_DEBUG << "Added process '" << config.name << "' to manager";
 }
 
 void ProcessManager::start_all() {
+    if (processes_.empty()) return;
     LOG_INFO << "Starting all processes (" << processes_.size() << " total)";
 
     for (auto& process : processes_) {
@@ -43,6 +45,7 @@ void ProcessManager::start_all() {
 }
 
 void ProcessManager::stop_all() {
+    if (processes_.empty()) return;
     LOG_INFO << "Stopping all processes";
 
     // Send stop signal to all processes with active PIDs (RUNNING, STARTING, etc.)
@@ -112,9 +115,7 @@ bool ProcessManager::restart_process(const std::string& name) {
     auto* proc = it->second;
 
     if (proc->pid() > 0) {
-        if (!proc->stop()) {
-            return false;
-        }
+        if (!proc->stop()) return false;
 
         // Actively reap until stopped or timeout
         auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
