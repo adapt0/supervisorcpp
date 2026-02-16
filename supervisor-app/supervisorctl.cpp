@@ -151,7 +151,8 @@ private:
             call_method_("supervisor.startAllProcesses");
             std::cout << "All processes restarted" << std::endl;
         } else {
-            call_method_("supervisor.restart", {args[0]});
+            call_method_("supervisor.stopProcess", {args[0]});
+            call_method_("supervisor.startProcess", {args[0]});
             std::cout << args[0] << ": restarted" << std::endl;
         }
         return 0;

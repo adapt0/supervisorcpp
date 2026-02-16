@@ -122,16 +122,6 @@ void Supervisord::register_rpc_handlers_() {
         return wrap( process_manager_.get_all_process_info() ).str();
     });
 
-    rpc_server_ptr_->register_handler("supervisor.restart", [this](const RpcParams& params) {
-        if (params.empty()) throw std::runtime_error("Process name required");
-        const auto& name = params[0];
-        if (!process_manager_.get_process(name)) throw std::runtime_error("BAD_NAME: " + name);
-        if (!process_manager_.restart_process(name)) {
-            throw std::runtime_error("SPAWN_ERROR: " + name);
-        }
-        return Value{true}.str();
-    });
-
     rpc_server_ptr_->register_handler("supervisor.shutdown", [this](const RpcParams&) {
         boost::asio::post(io_context_, [this]() {
             process_manager_.stop_all();
