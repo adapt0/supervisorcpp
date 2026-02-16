@@ -481,6 +481,12 @@ bool Process::setup_working_directory_() {
 }
 
 void Process::setup_environment_() {
+    // Set supervisor-specific environment variables
+    // These come before user env vars so they can be overridden if needed
+    setenv("SUPERVISOR_ENABLED", "1", 1);
+    setenv("SUPERVISOR_PROCESS_NAME", config_.name.c_str(), 1);
+    setenv("SUPERVISOR_GROUP_NAME",   config_.name.c_str(), 1);
+
     // Add configured environment variables
     for (const auto& [key, value] : config_.environment) {
         setenv(key.c_str(), value.c_str(), 1);  // 1 = overwrite
