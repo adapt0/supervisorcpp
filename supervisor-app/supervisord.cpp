@@ -179,6 +179,7 @@ int supervisord_main(int argc, char* argv[]) {
         LOG_INFO << "Log: " << config.supervisord.logfile.string();
         logger::init_file_logging(
             config.supervisord.logfile,
+            config.supervisord.loglevel,
             config.supervisord.logfile_maxbytes,
             config.supervisord.logfile_backups,
             VERSION_STR

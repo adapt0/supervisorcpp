@@ -19,7 +19,7 @@ void init_logging(LogLevel level = LogLevel::INFO);
  * @param logfile Path to log file
  * @param level Log level
  */
-void init_file_logging(const std::filesystem::path& logfile,
+void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
                        size_t max_bytes = 50 * 1024 * 1024, int backups = 10,
                        std::string_view header = "");
 
