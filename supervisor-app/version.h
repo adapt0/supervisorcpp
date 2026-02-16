@@ -6,7 +6,7 @@
 
 namespace supervisorcpp {
 
-constexpr std::string_view VERSION_STR{"supervisorcpp 0.1.0"};
+constexpr std::string_view VERSION_STR{"supervisorcpp v26.02.0"};
 
 } // namespace supervisorcpp
 
