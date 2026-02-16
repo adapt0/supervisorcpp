@@ -41,9 +41,6 @@ command=/bin/echo test_app
     BOOST_CHECK_EQUAL(config.supervisord.childlogdir.string(), "/var/log/supervisor");
     BOOST_CHECK_EQUAL(config.supervisord.pidfile.string(), "");
 
-    // Check supervisorctl
-    BOOST_CHECK_EQUAL(config.supervisorctl.serverurl, "unix:///run/supervisord.sock");
-
     // Check program
     BOOST_CHECK_EQUAL(config.programs.size(), 1);
     BOOST_CHECK_EQUAL(config.programs[0].name, "test_app");

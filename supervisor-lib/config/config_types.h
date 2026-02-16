@@ -76,15 +76,6 @@ struct SupervisordConfig {
 };
 
 /**
- * Configuration for supervisorctl section
- */
-struct SupervisorctlConfig {
-    std::string serverurl{"unix:///run/supervisord.sock"};
-
-    // Future: username, password, prompt
-};
-
-/**
  * Configuration for a single program
  */
 struct ProgramConfig {
@@ -132,7 +123,6 @@ struct ProgramConfig {
 struct Configuration {
     UnixHttpServerConfig unix_http_server;
     SupervisordConfig supervisord;
-    SupervisorctlConfig supervisorctl;
     std::vector<ProgramConfig> programs;
     std::set<std::string> included; ///< track included files (loop check)
 

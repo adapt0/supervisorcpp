@@ -104,11 +104,6 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
         pt_get(section, "user",             config.supervisord.user);
     }
 
-    // Parse supervisorctl section
-    if (const auto section = tree.get_child_optional("supervisorctl")) {
-        pt_get(section, "serverurl", config.supervisorctl.serverurl);
-    }
-
     // Parse include section and recursively load included files
     if (const auto section = tree.get_child_optional("include")) {
         std::vector<std::string> patterns;
@@ -277,11 +272,6 @@ void ConfigParser::validate_config_(const Configuration& config) {
     // Check that supervisord section has a logfile
     if (config.supervisord.logfile.empty()) {
         throw ConfigParseError("Missing [supervisord] section or 'logfile' parameter");
-    }
-
-    // Check that supervisorctl section has a serverurl
-    if (config.supervisorctl.serverurl.empty()) {
-        throw ConfigParseError("Missing [supervisorctl] section or 'serverurl' parameter");
     }
 
     // Validate each program has required fields
