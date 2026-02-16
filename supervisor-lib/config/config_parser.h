@@ -20,6 +20,30 @@ public:
 };
 
 /**
+ * Wrap a parser function to rethrow std::invalid_argument as ConfigParseError
+ * Usage: pt_get(section, "key", value, parse_config(parse_size, "[supervisord] key"))
+ */
+template <typename Func>
+requires std::invocable<Func, const std::string&>
+auto parse_config(Func&& parser, std::string context) {
+    return [
+        parser = std::forward<Func>(parser),
+        context = std::move(context)
+    ](const std::string& s) {
+        try {
+            if constexpr (std::is_void<decltype(parser(s))>::value) {
+                parser(s);
+                return s;
+            } else {
+                return parser(s);
+            }
+        } catch (const std::invalid_argument& e) {
+            throw ConfigParseError(context + ": " + e.what());
+        }
+    };
+}
+
+/**
  * Configuration parser for supervisord INI files
  */
 class ConfigParser {

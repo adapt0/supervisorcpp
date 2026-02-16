@@ -124,23 +124,13 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
 
     // Parse supervisord section
     if (const auto section = tree.get_child_optional("supervisord")) {
-        pt_get(section, "childlogdir", config.supervisord.childlogdir);
-        pt_get(section, "logfile",     config.supervisord.logfile);
-        pt_get(section, "logfile_maxbytes", config.supervisord.logfile_maxbytes, [](const std::string& s) -> size_t {
-            try { return parse_size(s); } catch (const std::invalid_argument& e) {
-                throw ConfigParseError("[supervisord] logfile_maxbytes: " + std::string(e.what()));
-            }
-        });
-        pt_get(section, "logfile_backups", config.supervisord.logfile_backups);
-        pt_get(section, "loglevel",    config.supervisord.loglevel, [](const auto& str) {
-            try {
-                return logger::parse_log_level(str);
-            } catch (const std::invalid_argument& e) {
-                throw ConfigParseError("[supervisord] loglevel - " + std::string(e.what()));
-            }
-        });
-        pt_get(section, "pidfile", config.supervisord.pidfile);
-        pt_get(section, "user", config.supervisord.user);
+        pt_get(section, "childlogdir",      config.supervisord.childlogdir);
+        pt_get(section, "logfile",          config.supervisord.logfile);
+        pt_get(section, "logfile_maxbytes", config.supervisord.logfile_maxbytes, parse_config(parse_size, "[supervisord] logfile_maxbytes"));
+        pt_get(section, "logfile_backups",  config.supervisord.logfile_backups);
+        pt_get(section, "loglevel",         config.supervisord.loglevel, parse_config(logger::parse_log_level, "[supervisord] loglevel"));
+        pt_get(section, "pidfile",          config.supervisord.pidfile);
+        pt_get(section, "user",             config.supervisord.user);
     }
 
     // Parse supervisorctl section
@@ -186,28 +176,16 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
             });
 
             // Optional fields
-            pt_get(value, "directory",    prog.directory, [](const std::string& s) -> fs::path { return s; });
-            pt_get(value, "autorestart",  prog.autorestart);
-            pt_get(value, "user",         prog.user);
+            pt_get(value, "autorestart",     prog.autorestart);
+            pt_get(value, "directory",       prog.directory);
             pt_get(value, "redirect_stderr", prog.redirect_stderr);
-            pt_get(value, "startsecs",    prog.startsecs);
-            pt_get(value, "startretries", prog.startretries);
-            pt_get(value, "stopwaitsecs", prog.stopwaitsecs);
-
-            pt_get(value, "stdout_logfile", prog.stdout_logfile, [&prog](const std::string& s) -> fs::path {
-                return prog.substitute_variables(s);
-            });
-            pt_get(value, "stdout_logfile_maxbytes", prog.stdout_logfile_maxbytes, [&key](const std::string& s) -> size_t {
-                try { return parse_size(s); } catch (const std::invalid_argument& e) {
-                    throw ConfigParseError("Program [" + key + "]: " + e.what());
-                }
-            });
-            pt_get(value, "stopsignal", prog.stopsignal, [&key](const std::string& s) {
-                try { util::validate_signal(s); } catch (const std::invalid_argument& e) {
-                    throw ConfigParseError("Program [" + key + "]: " + e.what());
-                }
-                return s;
-            });
+            pt_get(value, "startretries",    prog.startretries);
+            pt_get(value, "startsecs",       prog.startsecs);
+            pt_get(value, "stdout_logfile",  prog.stdout_logfile, [&prog](const std::string& s) -> fs::path { return prog.substitute_variables(s); });
+            pt_get(value, "stdout_logfile_maxbytes", prog.stdout_logfile_maxbytes, parse_config(parse_size, "Program [" + key + "] stdout_logfile_maxbytes"));
+            pt_get(value, "stopsignal",      prog.stopsignal, parse_config(util::validate_signal, "Program [" + key + "] stopsignal"));
+            pt_get(value, "stopwaitsecs",    prog.stopwaitsecs);
+            pt_get(value, "user",            prog.user);
 
             // Apply variable substitution to command
             prog.command = prog.substitute_variables(prog.command);
