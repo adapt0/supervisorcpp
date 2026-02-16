@@ -1,4 +1,5 @@
 #include "supervisord.h"
+#include "args_parser.h"
 #include "version.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
@@ -19,8 +20,6 @@ Supervisord::Supervisord(const config::Configuration& config)
         process_manager_.add_process(prog);
     }
 }
-
-Supervisord::~Supervisord() = default;
 
 int Supervisord::run() {
     // Setup signal handlers for SIGTERM and SIGINT
@@ -160,34 +159,26 @@ void Supervisord::register_rpc_handlers_() {
 
 } // namespace supervisorcpp
 
+
 int supervisord_main(int argc, char* argv[]) {
     using namespace supervisorcpp;
 
     try {
         namespace po = boost::program_options;
 
-        po::options_description desc("supervisord - process control system");
-        desc.add_options()
-            ("help,h", "Show this help message")
-            ("version,v", "Show version information")
-            ("configuration,c", po::value<std::string>()->default_value("/etc/supervisord.conf"), "Configuration file path")
-            ("nodaemon,n", "For compatibility - always runs in foreground")
-            ("pidfile,p", po::value<std::string>(), "Path to pid file")
-        ;
-
-        po::variables_map vm;
-        po::store(po::parse_command_line(argc, argv, desc), vm);
-        po::notify(vm);
-
-        if (vm.count("help")) {
-            std::cout << desc << std::endl;
-            return 0;
-        }
-
-        if (vm.count("version")) {
-            std::cout << VERSION_STR << std::endl;
-            return 0;
-        }
+        const auto parsed_opt = parse_args(
+            argc, argv,
+            "supervisord - process control system",
+            [](auto& parser, auto& desc) {
+                (void)parser;
+                desc.add_options()
+                    ("nodaemon,n", "For compatibility - always runs in foreground")
+                    ("pidfile,p", po::value<std::string>(), "Path to pid file")
+                ;
+            }
+        );
+        if (!parsed_opt) return 0;
+        const auto& [ vm, args ] = *parsed_opt;
 
         LOG_INFO << VERSION_STR;
 
@@ -195,17 +186,15 @@ int supervisord_main(int argc, char* argv[]) {
         LOG_INFO << "Config: " << config_file;
         const auto config = config::ConfigParser::parse_file(config_file);
 
-        LOG_INFO << "Log: " << config.supervisord.logfile.string() << " (" << config.supervisord.loglevel << ")";
+        LOG_INFO << "Log: " << config.supervisord.logfile.string();
         logger::init_file_logging(
             config.supervisord.logfile,
-            config.supervisord.loglevel,
             config.supervisord.logfile_maxbytes,
             config.supervisord.logfile_backups,
             VERSION_STR
         );
 
         // Create pidfile guard (command-line overrides config file)
-        // std::optional<util::PidFileGuard> pidfile_guard;
         const auto pidfile_guard = [&config, &vm]() -> std::optional<util::PidFileGuard> {
             if (vm.count("pidfile")) return util::PidFileGuard{vm["pidfile"].as<std::string>()};
             if (!config.supervisord.pidfile.empty()) return util::PidFileGuard{config.supervisord.pidfile};

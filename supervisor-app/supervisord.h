@@ -14,7 +14,7 @@ namespace supervisorcpp {
 class Supervisord {
 public:
     explicit Supervisord(const config::Configuration& config);
-    ~Supervisord();
+    ~Supervisord() = default;
 
     Supervisord(const Supervisord&) = delete;
     Supervisord& operator=(const Supervisord&) = delete;

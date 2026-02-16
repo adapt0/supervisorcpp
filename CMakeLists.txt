@@ -68,6 +68,7 @@ add_custom_target(git_version ALL
 
 # Unified supervisor binary (busybox-style multi-call binary)
 add_executable(supervisor
+    supervisor-app/args_parser.cpp
     supervisor-app/main.cpp
     supervisor-app/supervisord.cpp
     supervisor-app/supervisorctl.cpp

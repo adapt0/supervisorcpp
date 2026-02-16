@@ -12,14 +12,14 @@ namespace supervisorcpp::logger {
 /**
  * Initialize the logging system
  */
-void init_logging();
+void init_logging(LogLevel level = LogLevel::INFO);
 
 /**
  * Initialize logging to file
  * @param logfile Path to log file
  * @param level Log level
  */
-void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
+void init_file_logging(const std::filesystem::path& logfile,
                        size_t max_bytes = 50 * 1024 * 1024, int backups = 10,
                        std::string_view header = "");
 
@@ -29,9 +29,19 @@ void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
 void shutdown_logging();
 
 /**
+ * Get current log level
+ */
+LogLevel get_log_level();
+
+/**
  * Set log level dynamically
  */
 void set_log_level(LogLevel level);
+
+/**
+ * Shift log level by an increment (verbosity adjustment)
+ */
+void increment_log_level(int amount = 1);
 
 } // namespace supervisorcpp::logger
 

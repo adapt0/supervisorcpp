@@ -1,5 +1,7 @@
+#include "args_parser.h"
 #include "version.h"
 #include "config/ini_reader.h"
+#include "logger/logger.h"
 #include "rpc/rpc_fwd.h"
 #include "rpc/xmlrpc.h"
 #include "util/string.h"
@@ -16,6 +18,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+
+namespace supervisorcpp {
 
 using RpcParams = supervisorcpp::rpc::RpcParams;
 
@@ -47,6 +51,13 @@ public:
     : socket_path_(socket_path)
     { }
 
+    ~SupervisorCtlClient() = default;
+
+    SupervisorCtlClient(const SupervisorCtlClient&) = delete;
+    SupervisorCtlClient& operator=(const SupervisorCtlClient&) = delete;
+    SupervisorCtlClient(SupervisorCtlClient&&) = delete;
+    SupervisorCtlClient& operator=(SupervisorCtlClient&&) = delete;
+
     /**
      * Execute a supervisorctl command
      */
@@ -60,8 +71,8 @@ public:
                 }
             }
 
-            std::cerr << "*** Unknown command: " << method << std::endl;
-            std::cerr << "Use 'help' for available commands" << std::endl;
+            std::cerr << "Error: unknown command '" << method << "'\n";
+            std::cerr << "Use 'help' for available commands\n";
             return 1;
 
         } catch (const std::exception& e) {
@@ -251,18 +262,18 @@ private:
         try {
             namespace pt = boost::property_tree;
 
+            LOG_TRACE << xml;
+
             pt::ptree tree;
             {
                 std::istringstream iss(xml);
                 pt::read_xml(iss, tree);
             }
 
-            // Navigate to the array
-            const auto value_node = tree.get_child("methodResponse.params.param.value");
+            const auto& value_node = tree.get_child("methodResponse.params.param.value");
 
-            // Check if it's an array
             std::vector<ProcessInfo> result;
-            if (auto array_node = value_node.get_child_optional("array.data")) {
+            if (const auto array_node = value_node.get_child_optional("array.data")) {
                 for (const auto& item : *array_node) {
                     if (item.first == "value") {
                         ProcessInfo info;
@@ -306,11 +317,9 @@ private:
         oss << "<methodCall>\n";
         oss << "  <methodName>" << util::escape_xml(method_name) << "</methodName>\n";
         oss << "  <params>\n";
-
         for (const auto& param : params) {
-            oss << "    <param>" << xmlrpc::Value{param} << "</param>\n";
+            oss << "<param>" << xmlrpc::Value{param} << "</param>";
         }
-
         oss << "  </params>\n";
         oss << "</methodCall>\n";
         return oss.str();
@@ -359,7 +368,7 @@ private:
  */
 void interactive_mode(SupervisorCtlClient& client) {
     while (true) {
-        std::cout << "supervisord> ";
+        std::cout << "supervisor> ";
 
         std::string line;
         if (!std::getline(std::cin, line)) break;
@@ -383,45 +392,37 @@ void interactive_mode(SupervisorCtlClient& client) {
             break; // Exit requested
         }
     }
+    std::cout << std::endl;
 }
+
+} // namespace supervisorcpp
+
+using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
+
 
 int supervisorctl_main(int argc, char* argv[]) {
     try {
         namespace po = boost::program_options;
 
-        po::options_description desc("supervisorctl - control supervisord processes");
-        desc.add_options()
-            ("help,h", "Show this help message")
-            ("version", "Show version information")
-            ("config,c", po::value<std::string>()->default_value("/etc/supervisord.conf"),
-             "Configuration file path")
-            ("serverurl,s", po::value<std::string>(), "Server URL (e.g. unix:///run/supervisord.sock)")
-        ;
-
-        // Parse known options, leave rest for commands
-        po::variables_map vm;
-        auto parsed = po::command_line_parser(argc, argv)
-            .options(desc)
-            .allow_unregistered()
-            .run();
-
-        po::store(parsed, vm);
-        po::notify(vm);
-
-        if (vm.count("help")) {
-            std::cout << desc << std::endl;
-            SupervisorCtlClient{""}.cmdHelp(RpcParams{});
-            std::cout << "\nUsage:\n";
-            std::cout << "  supervisorctl status           # Show all process status\n";
-            std::cout << "  supervisorctl start myapp      # Start a specific process\n";
-            std::cout << "  supervisorctl                  # Interactive mode\n";
-            return 0;
-        }
-
-        if (vm.count("version")) {
-            std::cout << supervisorcpp::VERSION_STR << std::endl;
-            return 0;
-        }
+        auto parsed_opt = supervisorcpp::parse_args(
+            argc, argv,
+            "supervisorctl - control supervisord processes",
+            [](auto& parser, auto& desc) {
+                (void)parser;
+                desc.add_options()
+                    ("serverurl,s", po::value<std::string>(), "Server URL (e.g. unix:///run/supervisord.sock)")
+                ;
+            },
+            [] {
+                SupervisorCtlClient{""}.cmdHelp(supervisorcpp::RpcParams{});
+                std::cout << "\nUsage:\n";
+                std::cout << "  supervisorctl status           # Show all process status\n";
+                std::cout << "  supervisorctl start myapp      # Start a specific process\n";
+                std::cout << "  supervisorctl                  # Interactive mode\n";
+            }
+        );
+        if (!parsed_opt) return 0;
+        auto& [ vm, args ] = *parsed_opt;
 
         // Resolve server URL: CLI arg > config file > default
         const auto serverurl = [&vm]() -> std::string {
@@ -429,7 +430,7 @@ int supervisorctl_main(int argc, char* argv[]) {
 
             try {
                 // Lightweight read of just [supervisorctl] from config
-                std::ifstream file(vm["config"].as<std::string>());
+                std::ifstream file(vm["configuration"].as<std::string>());
                 supervisorcpp::config::CommentStrippingBuf filtered(file);
                 std::istream filtered_stream(&filtered);
                 boost::property_tree::ptree tree;
@@ -452,12 +453,12 @@ int supervisorctl_main(int argc, char* argv[]) {
                       << " use a unix:// URL or a socket path" << std::endl;
             return 1;
         }
+        LOG_DEBUG << "Using socket: " << socket_path;
 
         // Create client
         SupervisorCtlClient client{socket_path};
 
         // Get remaining arguments as command
-        auto args = po::collect_unrecognized(parsed.options, po::include_positional);
         if (args.empty()) {
             // No command specified, enter interactive mode
             interactive_mode(client);

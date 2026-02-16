@@ -12,32 +12,37 @@
 
 namespace supervisorcpp::logger {
 
+namespace expr = boost::log::expressions;
+namespace keywords = boost::log::keywords;
 namespace logging = boost::log;
 namespace sinks = boost::log::sinks;
-namespace keywords = boost::log::keywords;
-namespace expr = boost::log::expressions;
+
+using TrivialSeverity = boost::log::trivial::severity_level;
 
 namespace {
 
 /**
  * Convert our log level to Boost log severity
  */
-boost::log::trivial::severity_level to_boost_severity(LogLevel level) {
+static TrivialSeverity to_trivial_severity(LogLevel level) {
     switch (level) {
-    case LogLevel::TRACE: return boost::log::trivial::trace;
-    case LogLevel::DEBUG: return boost::log::trivial::debug;
-    case LogLevel::INFO: return boost::log::trivial::info;
-    case LogLevel::WARN: return boost::log::trivial::warning;
-    case LogLevel::ERROR: return boost::log::trivial::error;
+    case LogLevel::TRACE: return TrivialSeverity::trace;
+    case LogLevel::DEBUG: return TrivialSeverity::debug;
+    case LogLevel::INFO: return TrivialSeverity::info;
+    case LogLevel::WARN: return TrivialSeverity::warning;
+    case LogLevel::ERROR: return TrivialSeverity::error;
     }
-    return boost::log::trivial::info;
+    return TrivialSeverity::info;
 }
 
 BOOST_LOG_ATTRIBUTE_KEYWORD(file_only, "FileOnly", bool)
 
+static LogLevel current_level = LogLevel::INFO;
+static TrivialSeverity current_trivial_severity = to_trivial_severity(current_level);
+
 } // anonymous namespace
 
-void init_logging() {
+void init_logging(LogLevel level) {
     // Add common attributes (timestamp, thread id, etc.)
     logging::add_common_attributes();
 
@@ -46,16 +51,23 @@ void init_logging() {
         std::clog,
         keywords::format = "[%TimeStamp%] [%Severity%] %Message%"
     );
-    console->set_filter(!expr::has_attr(file_only));
+
+    // Set filter level
+    current_level = level;
+    current_trivial_severity = to_trivial_severity(level);
+    logging::core::get()->set_filter(
+        !expr::has_attr(file_only)
+        && logging::trivial::severity >= boost::ref(current_trivial_severity)
+    );
 }
 
-void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
+void init_file_logging(const std::filesystem::path& logfile,
                        size_t max_bytes, int backups,
                        std::string_view header) {
     if (logfile.empty()) return;
 
     // File sink with rotation and collection
-    logging::add_file_log(
+    const auto log_file = logging::add_file_log(
         keywords::file_name = logfile.string(),
         keywords::open_mode = std::ios::app,
         keywords::rotation_size = max_bytes,
@@ -66,8 +78,8 @@ void init_file_logging(const std::filesystem::path& logfile, LogLevel level,
     );
 
     // Set filter level
-    logging::core::get()->set_filter(
-        logging::trivial::severity >= to_boost_severity(level)
+    log_file->set_filter(
+        logging::trivial::severity >= TrivialSeverity::info
     );
 
     // Write delimiting header to file only
@@ -83,11 +95,23 @@ void shutdown_logging() {
     logging::core::get()->remove_all_sinks();
 }
 
+LogLevel get_log_level() {
+    return current_level;
+}
+
 void set_log_level(LogLevel level) {
-    logging::core::get()->set_filter(
-        logging::trivial::severity >= to_boost_severity(level)
+    current_level = level;
+    current_trivial_severity = to_trivial_severity(level);
+    LOG_TRACE << "Log level changed to: " << level;
+}
+
+void increment_log_level(int amount) {
+    const auto level = std::clamp(
+        static_cast<LogLevel>(static_cast<int>(current_level) - amount),
+        LogLevel::TRACE,
+        LogLevel::ERROR
     );
-    LOG_INFO << "Log level changed to: " << level;
+    if (level != current_level) set_log_level(level);
 }
 
 } // namespace supervisorcpp::logger

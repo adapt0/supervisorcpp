@@ -8,6 +8,7 @@
  * Consistent with the busybox pattern
  */
 
+#include "logger/logger.h"
 #include <filesystem>
 #include <string>
 
@@ -15,6 +16,8 @@ int supervisord_main(int argc, char* argv[]);
 int supervisorctl_main(int argc, char* argv[]);
 
 int main(int argc, char* argv[]) {
+    supervisorcpp::logger::init_logging();
+
     // run as supervisord by default
     bool as_supervisorctl = false;
     int arg_ofs = 0;
