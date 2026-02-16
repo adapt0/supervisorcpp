@@ -21,6 +21,7 @@
 
 namespace supervisorcpp {
 
+using ptree = boost::property_tree::ptree;
 using RpcParams = supervisorcpp::rpc::RpcParams;
 
 /**
@@ -41,6 +42,28 @@ public:
      * Parse process info from XML-RPC response
      */
     struct ProcessInfo {
+        static ProcessInfo from(const ptree& pt) {
+            const auto pt_struct_opt = pt.get_child_optional("struct");
+            if (!pt_struct_opt) throw std::runtime_error("ProcessInfo expected struct");
+
+            ProcessInfo info;
+            for (const auto& member : *pt_struct_opt) {
+                if (member.first == "member") {
+                    const auto name = member.second.get<std::string>("name");
+                    if (name == "name") {
+                        info.name = member.second.get<std::string>("value.string", "");
+                    } else if (name == "statename") {
+                        info.statename = member.second.get<std::string>("value.string", "UNKNOWN");
+                    } else if (name == "pid") {
+                        info.pid = member.second.get<int>("value.int", -1);
+                    } else if (name == "description") {
+                        info.description = member.second.get<std::string>("value.string", "");
+                    }
+                }
+            }
+            return info;
+        }
+
         std::string name;
         std::string statename;
         int pid;
@@ -196,12 +219,20 @@ private:
         return 0;
     }
 
-    int cmdStatus_(const RpcParams&) {
-        print_process_info_(
-            parse_process_info_array_(
-                call_method_("supervisor.getAllProcessInfo")
-            )
-        );
+    int cmdStatus_(const RpcParams& args) {
+        if (args.size() < 1 || args[0] == "all") {
+            print_process_info_(
+                parse_process_info_array_(
+                    call_method_("supervisor.getAllProcessInfo")
+                )
+            );
+        } else {
+            print_process_info_(
+                parse_process_info_(
+                    call_method_("supervisor.getProcessInfo", { args[0] })
+                )
+            );
+        }
         return 0;
     }
 
@@ -221,7 +252,7 @@ private:
      * Call RPC method
      * Creates a fresh socket per call so the client is reusable in interactive mode
      */
-    std::string call_method_(const std::string& method_name, const RpcParams& params = {}) {
+    ptree call_method_(const std::string& method_name, const RpcParams& params = {}) {
         using stream_protocol = boost::asio::local::stream_protocol;
 
         try {
@@ -273,10 +304,14 @@ private:
 
             LOG_TRACE << "-> " << response_str;
 
-            // Check for XML-RPC fault response
-            check_fault_(response_str);
-
-            return response_str;
+            // process response
+            ptree tree;
+            {
+                std::istringstream iss{response_str};
+                boost::property_tree::read_xml(iss, tree);
+            }
+            check_fault_(tree);
+            return tree;
 
         } catch (const boost::system::system_error& e) {
             if (e.code() == boost::asio::error::connection_refused) {
@@ -296,54 +331,42 @@ private:
      * Format process info for display (supervisord-compatible format)
      */
     static void print_process_info_(const std::vector<ProcessInfo>& processes) {
-        for (const auto& proc : processes) {
-            std::cout << std::left << std::setw(20) << proc.name
-                    << std::setw(15) << proc.statename
-                    << proc.description << std::endl;
+        for (const auto& info : processes) {
+            print_process_info_(info);
         }
     }
+    static void print_process_info_(const ProcessInfo& info) {
+        std::cout << std::left << std::setw(20) << info.name
+                << std::setw(15) << info.statename
+                << info.description << std::endl;
+    }
 
-    static std::vector<ProcessInfo> parse_process_info_array_(const std::string& xml) {
+    static std::vector<ProcessInfo> parse_process_info_array_(const ptree& tree) {
         try {
-            namespace pt = boost::property_tree;
-
-            pt::ptree tree;
-            {
-                std::istringstream iss(xml);
-                pt::read_xml(iss, tree);
-            }
-
             const auto& value_node = tree.get_child("methodResponse.params.param.value");
 
             std::vector<ProcessInfo> result;
             if (const auto array_node = value_node.get_child_optional("array.data")) {
                 for (const auto& item : *array_node) {
                     if (item.first == "value") {
-                        ProcessInfo info;
-
-                        // Parse struct members
-                        if (const auto struct_node = item.second.get_child_optional("struct")) {
-                            for (const auto& member : *struct_node) {
-                                if (member.first == "member") {
-                                    const auto name = member.second.get<std::string>("name");
-                                    if (name == "name") {
-                                        info.name = member.second.get<std::string>("value.string", "");
-                                    } else if (name == "statename") {
-                                        info.statename = member.second.get<std::string>("value.string", "UNKNOWN");
-                                    } else if (name == "pid") {
-                                        info.pid = member.second.get<int>("value.int", -1);
-                                    } else if (name == "description") {
-                                        info.description = member.second.get<std::string>("value.string", "");
-                                    }
-                                }
-                            }
-                        }
-
-                        result.push_back(info);
+                        result.push_back(
+                            ProcessInfo::from(item.second)
+                        );
                     }
                 }
             }
             return result;
+
+        } catch (const std::exception& e) {
+            throw std::runtime_error("Failed to parse response: " + std::string(e.what()));
+        }
+    }
+
+    static ProcessInfo parse_process_info_(const ptree& tree) {
+        try {
+            return ProcessInfo::from(
+                tree.get_child("methodResponse.params.param.value")
+            );
 
         } catch (const std::exception& e) {
             throw std::runtime_error("Failed to parse response: " + std::string(e.what()));
@@ -359,7 +382,7 @@ private:
         oss << "<?xml version=\"1.0\"?>\n";
         oss << "<methodCall>\n";
         oss << "  <methodName>" << util::escape_xml(method_name) << "</methodName>\n";
-        oss << "  <params>\n";
+        oss << "  <params>";
         for (const auto& param : params) {
             oss << "<param>" << xmlrpc::Value{param} << "</param>";
         }
@@ -379,14 +402,7 @@ private:
         return oss.str();
     }
 
-    static void check_fault_(const std::string& xml) {
-        namespace pt = boost::property_tree;
-        pt::ptree tree;
-        {
-            std::istringstream iss(xml);
-            pt::read_xml(iss, tree);
-        }
-
+    static void check_fault_(const ptree& tree) {
         const auto fault_struct = tree.get_child_optional("methodResponse.fault.value.struct");
         if (!fault_struct) return;
 
