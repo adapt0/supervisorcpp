@@ -1,251 +1,51 @@
-# supervisorcpp - Minimal Supervisord Replacement in C++
+# supervisorcpp
 
-A lightweight, high-performance process supervisor written in C++23 for embedded Linux environments (Alpine Linux with musl). Compatible with supervisord configuration files, command-line tools, and RPC interface.
+A lightweight process supervisor written in C++23 for embedded Linux environments (Alpine Linux with musl). Drop-in replacement for supervisord — compatible with its configuration files, CLI tools, and XML-RPC interface.
 
-## Project Status
-
-**Phase 1: Configuration & Core Framework** ✅ COMPLETE
-**Phase 2: Process Management** ✅ COMPLETE
-**Phase 3: Log Capture & Rotation** ✅ COMPLETE
-**Phase 4: RPC Interface** ✅ COMPLETE
-**Phase 5: supervisorctl Client** ✅ COMPLETE
-**Phase 6: Production Polish & Testing** ✅ COMPLETE
-
-## Features
-
-✅ **Process Management**
-- Start, stop, restart processes
-- Automatic restart with configurable retry backoff
-- Process state tracking (STOPPED, STARTING, RUNNING, BACKOFF, STOPPING, EXITED, FATAL)
-- Multiple processes managed simultaneously
-- Signal handling (TERM, HUP, INT, QUIT, KILL, USR1, USR2)
-
-✅ **Configuration**
-- Compatible with supervisord INI format
-- Include file support with glob patterns
-- Variable substitution `%(program_name)s`
-- Environment variables with quote stripping
-- Working directory support
-- Comprehensive validation with clear error messages
-
-✅ **Logging**
-- Stdout/stderr capture with async I/O
-- Size-based log rotation on line boundaries
-- Configurable log levels (DEBUG, INFO, WARN, ERROR)
-- Individual log files per process
-- Automatic log directory creation
-
-✅ **RPC Interface**
-- XML-RPC over Unix domain sockets
-- Compatible with supervisorctl
-- Full API: getState, getAllProcessInfo, startProcess, stopProcess, restart, shutdown
-
-✅ **supervisorctl Client**
-- Interactive and non-interactive modes
-- Commands: status, start, stop, restart, shutdown, reload, help
-- Formatted output matching supervisord style
-
-✅ **Robustness & Testing**
-- 64 comprehensive test cases (100% passing)
-- Config parser robustness tests (23 tests)
-- XML-RPC parser validation (24 tests)
-- Integration tests covering full workflows (7 tests)
-- Unit tests (10 tests)
-
-## Building
-
-### Requirements
-
-- C++23 compiler (GCC 12+ or Clang 15+)
-- CMake 3.20+
-- Boost 1.75+ (log, filesystem, system, asio, property_tree, program_options, unit_test_framework)
-
-### Build Instructions
+## Quick Start
 
 ```bash
-# Install dependencies (Alpine Linux)
-apk add cmake g++ boost-dev
-
-# Or Ubuntu/Debian
-apt-get install cmake g++ libboost-all-dev
-
 # Build
-mkdir build
-cd build
-cmake ..
-make -j$(nproc)
+mkdir build && cd build
+cmake .. -G Ninja
+ninja -j$(nproc)
 
-# Run tests (64 tests, ~0.15 seconds)
+# Run tests
 ctest --output-on-failure
 
 # Install
-sudo make install
-```
-
-### Binary Architecture
-
-supervisorcpp uses a **busybox-style multi-call binary** approach:
-
-- **Single binary**: `supervisor` (2.8 MB)
-- **Symlinks**: `supervisord` → `supervisor`, `supervisorctl` → `supervisor`
-- **Mode selection**: Based on `argv[0]` (symlink name) or explicit `supervisor ctl` command
-
-This design:
-- ✅ Reduces installed footprint (~50% smaller than separate binaries)
-- ✅ Follows Alpine Linux philosophy (matches busybox pattern)
-- ✅ Simplifies distribution and installation
-- ✅ Easy to extend with new modes (e.g., `supervisorstat`)
-
-**Usage modes**:
-```bash
-# As daemon (default)
-supervisor -c /etc/supervisord.conf
-./supervisord -c /etc/supervisord.conf  # Via symlink
-
-# As controller
-supervisor ctl status                    # Explicit mode
-./supervisorctl status                   # Via symlink
-```
-
-### Directory Structure
-
-```
-supervisor-lib/              # Library code (headers + implementation)
-  config/                    # Configuration parsing & validation
-  process/                   # Process management & setup
-  rpc/                       # XML-RPC server & utilities
-  util/                      # Common utilities & errors
-
-supervisor-app/              # Application entry points
-  main.cpp                   # Unified entry point (argv[0] dispatch)
-  supervisord.cpp            # Daemon mode implementation
-  supervisorctl.cpp          # Controller mode implementation
-
-tests/                       # Test suites (64 tests)
-```
-
-## Configuration
-
-### Basic Configuration File
-
-```ini
-[unix_http_server]
-file=/var/run/supervisord.sock
-
-[supervisord]
-logfile=/var/log/supervisord.log
-loglevel=info
-
-[supervisorctl]
-serverurl=unix:///var/run/supervisord.sock
-
-[program:myapp]
-command=/usr/local/bin/myapp --config /etc/myapp.conf
-directory=/var/lib/myapp
-user=appuser
-autorestart=true
-stdout_logfile=/var/log/myapp.log
-stdout_logfile_maxbytes=50MB
-startsecs=5
-startretries=3
-stopwaitsecs=10
-stopsignal=TERM
-environment=PATH="/usr/local/bin:/usr/bin",CONFIG_ENV="production"
-```
-
-### Configuration Options
-
-#### [unix_http_server] Section
-- `file` - Path to Unix domain socket for RPC (default: `/run/supervisord.sock`)
-
-#### [supervisord] Section
-- `logfile` - Supervisord main log file (default: `/var/log/supervisord.log`)
-- `loglevel` - Log level: debug, info, warn, error (default: `info`)
-- `user` - Run as user (default: `root`)
-- `childlogdir` - Directory for AUTO child logs (default: `/var/log/supervisor`)
-
-#### [supervisorctl] Section
-- `serverurl` - URL to supervisord RPC interface (default: `unix:///run/supervisord.sock`)
-
-#### [program:x] Section (x = program name)
-Required:
-- `command` - Command to run (supports variable substitution)
-
-Optional:
-- `directory` - Working directory for process
-- `user` - Run process as this user (default: `root`)
-- `autorestart` - Auto-restart: true/false (default: `true`)
-- `startsecs` - Seconds process must stay up to be considered successful (default: `1`)
-- `startretries` - Number of restart attempts before giving up (default: `3`)
-- `stopwaitsecs` - Seconds to wait before SIGKILL after SIGTERM (default: `10`)
-- `stopsignal` - Signal to send on stop: TERM, HUP, INT, QUIT, KILL, USR1, USR2 (default: `TERM`)
-- `stdout_logfile` - Path to stdout log (supports `%(program_name)s`)
-- `stdout_logfile_maxbytes` - Max size before rotation: 1KB, 10MB, 1GB (default: `50MB`)
-- `stdout_logfile_backups` - Number of backup files to keep (default: `10`)
-- `redirect_stderr` - Redirect stderr to stdout (default: `false`)
-- `environment` - Environment variables: `KEY1="value1",KEY2="value2"`
-
-### Variable Substitution
-
-Currently supported:
-- `%(program_name)s` - Replaced with program name
-
-Example:
-```ini
-[program:webapp]
-command=/usr/bin/webapp
-stdout_logfile=/var/log/%(program_name)s.log
-# Expands to: /var/log/webapp.log
+sudo ninja install
 ```
 
 ## Usage
 
-### Running supervisord
+supervisorcpp uses a **busybox-style multi-call binary**. A single `supervisor` binary dispatches by `argv[0]` or subcommand:
 
 ```bash
-# Start supervisord (always runs in foreground)
+# Start the daemon
 supervisord -c /etc/supervisord.conf
+supervisor -c /etc/supervisord.conf      # equivalent (daemon is the default mode)
 
-```
-
-> **Note:** Unlike Python supervisord, supervisorcpp does not daemonize. It always
-> runs in the foreground. Use your init system (OpenRC, systemd, etc.) to manage
-> it as a background service. The `-n`/`--nodaemon` flag is accepted for
-> configuration compatibility but is a no-op.
-
-### Using supervisorctl
-
-#### Non-interactive Mode
-```bash
-# Show all process status
+# Control processes
 supervisorctl status
-
-# Start a process
 supervisorctl start myapp
-
-# Stop a process
 supervisorctl stop myapp
-
-# Restart a process
 supervisorctl restart myapp
-
-# Shutdown supervisord
 supervisorctl shutdown
+supervisor ctl status                     # equivalent via subcommand
 ```
 
-#### Interactive Mode
+> **Note:** Unlike Python supervisord, supervisorcpp always runs in the foreground.
+> Use your init system (OpenRC, systemd, Docker) to manage it as a service.
+> The `-n`/`--nodaemon` flag is accepted for compatibility but is a no-op.
+
+### Interactive Mode
+
 ```bash
 $ supervisorctl
 supervisord> status
 myapp        RUNNING    pid 1234, uptime 0:05:23
 webapp       STOPPED
-
-supervisord> start webapp
-webapp: started
-
-supervisord> restart myapp
-myapp: stopped
-myapp: started
 
 supervisord> help
 status          Show process status
@@ -256,179 +56,147 @@ shutdown        Shutdown supervisord
 reload          Reload configuration
 help            Show this help
 exit            Exit supervisorctl
-
-supervisord> exit
 ```
 
-## Testing
+## Configuration
 
-### Test Suites
+Compatible with standard supervisord INI format:
+
+```ini
+[unix_http_server]
+file=/var/run/supervisord.sock
+
+[supervisord]
+logfile=/var/log/supervisord.log
+loglevel=info
+
+[program:myapp]
+command=/usr/local/bin/myapp --config /etc/myapp.conf
+directory=/var/lib/myapp
+user=appuser
+autorestart=true
+stdout_logfile=/var/log/%(program_name)s.log
+stdout_logfile_maxbytes=50MB
+startsecs=5
+startretries=3
+stopwaitsecs=10
+stopsignal=TERM
+environment=PATH="/usr/local/bin:/usr/bin",CONFIG_ENV="production"
+```
+
+### Configuration Reference
+
+#### [unix_http_server]
+| Option | Default | Description |
+|--------|---------|-------------|
+| `file` | `/run/supervisord.sock` | Unix domain socket path |
+
+#### [supervisord]
+| Option | Default | Description |
+|--------|---------|-------------|
+| `logfile` | `/var/log/supervisord.log` | Main log file |
+| `loglevel` | `info` | Log level: debug, info, warn, error |
+| `user` | `root` | Run daemon as user |
+| `childlogdir` | `/var/log/supervisor` | Directory for AUTO child logs |
+
+#### [program:x]
+| Option | Default | Description |
+|--------|---------|-------------|
+| `command` | *(required)* | Command to run |
+| `directory` | — | Working directory |
+| `user` | `root` | Run process as user |
+| `autorestart` | `true` | Restart on exit |
+| `startsecs` | `1` | Seconds before considered started |
+| `startretries` | `3` | Max restart attempts before FATAL |
+| `stopwaitsecs` | `10` | Seconds before SIGKILL after stop signal |
+| `stopsignal` | `TERM` | Signal on stop: TERM, HUP, INT, QUIT, KILL, USR1, USR2 |
+| `stdout_logfile` | — | Stdout log path (supports `%(program_name)s`) |
+| `stdout_logfile_maxbytes` | `50MB` | Max log size before rotation |
+| `stdout_logfile_backups` | `10` | Rotated log files to keep |
+| `redirect_stderr` | `false` | Merge stderr into stdout log |
+| `environment` | — | Env vars: `KEY1="val1",KEY2="val2"` |
+
+#### [include]
+| Option | Description |
+|--------|-------------|
+| `files` | Glob patterns for additional config files (e.g. `conf.d/*.ini`) |
+
+## Features
+
+- **Process management** — start, stop, restart with automatic retry and exponential backoff to FATAL state
+- **Process states** — STOPPED, STARTING, RUNNING, BACKOFF, STOPPING, EXITED, FATAL
+- **Signal handling** — configurable stop signal, graceful SIGTERM-then-SIGKILL shutdown
+- **Log capture** — async stdout/stderr capture with size-based rotation on line boundaries
+- **Configuration** — supervisord-compatible INI format with include files, glob patterns, and `%(program_name)s` substitution
+- **XML-RPC** — full control API over Unix domain sockets
+- **supervisorctl** — interactive and non-interactive modes with formatted output
+
+## Building
+
+### Requirements
+
+- C++23 compiler (GCC 13+ or Clang 16+)
+- CMake 3.20+
+- Boost 1.75+ (log, filesystem, system, asio, property_tree, program_options, unit_test_framework)
 
 ```bash
-# Run all tests
-cd build
-ctest --output-on-failure
+# Alpine Linux
+apk add cmake g++ boost-dev ninja
 
-# Run specific test suites
-./config_test                # Configuration parser tests (10 tests)
-./parser_robustness_test     # Parser robustness (23 tests)
-./xmlrpc_parser_test         # XML-RPC parser (24 tests)
-./integration_test           # Integration tests (7 tests)
+# Ubuntu/Debian
+apt-get install cmake g++ libboost-all-dev ninja-build
 ```
-
-### Test Coverage Summary
-
-| Test Suite | Tests | Coverage |
-|------------|-------|----------|
-| Config Parser | 10 | Core INI parsing, includes, validation |
-| Parser Robustness | 23 | Invalid inputs, edge cases, error handling |
-| XML-RPC Parser | 24 | Malformed XML, data types, special characters |
-| Integration | 7 | Full process lifecycle, multi-process |
-| **TOTAL** | **64** | **100% Pass Rate** |
-
-### Integration Test Scenarios
-
-1. **Process Exits Immediately** - Tests startsecs validation
-2. **Start/Stop/Restart Cycle** - Full lifecycle validation
-3. **Multiple Processes** - Simultaneous process management
-4. **Autorestart Failing Process** - Retry backoff to FATAL state
-5. **Log Capture Validation** - Stdout/stderr capture correctness
-6. **Working Directory** - Directory switching verification
-7. **Rapid Start/Stop Cycles** - Stress test for race conditions
-
-## Architecture
-
-### Components
-
-```
-supervisorcpp/
-├── include/
-│   ├── config_types.h       # Configuration data structures
-│   ├── config_parser.h      # INI configuration parser
-│   ├── logger.h             # Logging infrastructure
-│   ├── process.h            # Process lifecycle management
-│   ├── process_manager.h    # Multi-process coordinator
-│   ├── log_writer.h         # Log file rotation
-│   └── rpc_server.h         # XML-RPC server
-├── src/
-│   ├── main.cpp             # supervisord entry point
-│   ├── ctl/supervisorctl.cpp # supervisorctl client
-│   ├── config/              # Configuration implementation
-│   ├── process/             # Process management
-│   ├── rpc/                 # RPC server
-│   └── util/                # Utilities (logging)
-└── tests/
-    ├── config/              # Config parser tests (33 tests)
-    ├── rpc/                 # XML-RPC parser tests (24 tests)
-    └── integration/         # Full workflow tests (7 tests)
-```
-
-### Event Loop
-
-supervisorcpp uses a single-threaded event loop powered by Boost.Asio:
-- Async I/O for process stdout/stderr capture
-- Signal handling (SIGCHLD for process exit detection)
-- Timer-based periodic state updates
-- Non-blocking socket I/O for RPC
-
-### Process State Machine
-
-```
-STOPPED (0)
-    ↓ start()
-STARTING (10) ----+
-    ↓             |
-RUNNING (20)      | fail before startsecs
-    ↓             |
-STOPPING (40)     ↓
-    ↓         BACKOFF (30) ---> retry (up to startretries)
-EXITED (100)      ↓
-                  | max retries exceeded
-                  ↓
-                FATAL (200)
-```
-
-## Performance
-
-Optimizations for embedded environments:
-- Single-threaded event loop (no thread overhead)
-- Minimal dependencies (Boost only)
-- Efficient async I/O (non-blocking)
-- Static linking option available
-- Small binary size (~2MB stripped)
-- Low memory footprint
-- Fast test execution (~0.15s for 64 tests)
 
 ## Differences from Python supervisord
 
-### Implemented
-- Core process management (start, stop, restart)
-- Autorestart with retry backoff
-- Log capture and rotation
-- XML-RPC interface
-- supervisorctl client (interactive & non-interactive)
-- Signal handling
-- Configuration validation
+### Supported
+- Core process management (start, stop, restart, autorestart)
+- Log capture and size-based rotation
+- XML-RPC interface over Unix sockets
+- supervisorctl (interactive and non-interactive)
+- Signal handling, configuration validation, include files
 
-### Not Implemented (Minimal Version)
-- Daemonization (always runs in foreground; use your init system)
-- Process groups
+### Not Supported
+- Daemonization (use your init system)
+- Process groups and priorities
 - Event listeners
 - Web UI
 - `numprocs` (multiple instances)
-- Advanced autorestart options (unexpected)
-- Full environment variable expansion (only `%(program_name)s`)
-- HTTP authentication
-- Remote RPC (only Unix sockets)
+- `autorestart=unexpected`
+- HTTP/TCP servers or authentication
+- Variable expansion beyond `%(program_name)s`
 
 ## Troubleshooting
 
-### Common Issues
-
 **supervisord fails to start**
-- Check configuration file syntax: `supervisord -c config.ini` (will show parse errors)
-- Verify log file directory exists and is writable
-- Check socket file path is writable
+- Check config syntax: `supervisord -c config.ini` (shows parse errors)
+- Verify log directory exists and is writable
+- Check socket path is writable
 
 **Process won't start**
-- Check process user has permission to execute command
+- Check user has permission to execute command
 - Verify working directory exists
-- Check stdout_logfile for error messages
-- Increase `startsecs` if process takes time to initialize
+- Check stdout_logfile for errors
+- Increase `startsecs` if process needs time to initialize
 
 **Process keeps restarting**
 - Check process logs for crash reason
-- Verify `startsecs` is appropriate for startup time
-- Check `startretries` setting
+- Verify `startsecs` is appropriate
 - Look for FATAL state indicating max retries exceeded
 
 **RPC connection failed**
 - Verify socket file exists: `ls -la /var/run/supervisord.sock`
-- Check socket file permissions
-- Ensure supervisord is running: `ps aux | grep supervisord`
+- Check socket permissions
+- Ensure supervisord is running
 
-**Logs not rotating**
-- Verify `stdout_logfile_maxbytes` setting
-- Check disk space
-- Ensure parent directory is writable
+## Documentation
 
-## License
-
-This is a reference implementation for educational purposes.
-
-## Contributing
-
-Areas for contribution:
-- Additional test coverage
-- Performance profiling and optimization
-- Alpine OpenRC integration script
-- Static analysis (clang-tidy, cppcheck)
-- Fuzzing tests for parsers
-- Documentation improvements
+- [Architecture](docs/ARCHITECTURE.md) — design decisions, state machine, extension guides
+- [Specification](docs/SPECIFICATION.md) — project specification, threat model
+- [TODO](docs/TODO.md) — known issues and future work
 
 ## References
 
 - [Supervisor Documentation](http://supervisord.org/)
 - [XML-RPC Specification](http://xmlrpc.com/spec.md)
-- [Boost.Asio Documentation](https://www.boost.org/doc/libs/release/doc/html/boost_asio.html)
-- [Alpine Linux](https://alpinelinux.org/)
+- [Boost](https://www.boost.org)

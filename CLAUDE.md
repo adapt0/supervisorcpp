@@ -49,7 +49,7 @@ tests/
 - **Header-only utilities** for small modules: `util/errors.h`, `util/path.h`, `config/validation.h`, `process/setup.h`, `rpc/socket_util.h`
 - **Boost.Asio** for all async I/O — single-threaded event loop, no threads for I/O
 - **Boost.PropertyTree** for INI config parsing and XML-RPC parsing
-- **Security checks** are distributed across components, not centralized (see `SECURITY_AUDIT.md`)
+- **Security checks** are distributed across components, not centralized (see `docs/SPECIFICATION.md` §6)
 - Daemon runs as **root** — security-sensitive code throughout
 
 ## Dependencies
@@ -60,6 +60,6 @@ tests/
 ## Other Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Architecture decisions, design patterns, extension guides
-- [SECURITY_AUDIT.md](SECURITY_AUDIT.md) — Threat model and security hardening details
-- [SPECIFICATION.md](SPECIFICATION.md) — Original project specification
+- [docs/SPECIFICATION.md](docs/SPECIFICATION.md) — Project specification, threat model
+- [docs/TODO.md](docs/TODO.md) — Known issues and future work
 - [README.md](README.md) — User-facing documentation

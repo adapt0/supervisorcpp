@@ -36,7 +36,7 @@ Security is not centralized. Each component owns its security concerns:
 | `rpc/socket_util.h` | Socket permissions (0600) |
 | `util/path.h` | Path canonicalization |
 
-Full details in [SECURITY_AUDIT.md](../SECURITY_AUDIT.md).
+Threat model and hardening details in [SPECIFICATION.md §6](SPECIFICATION.md).
 
 ## Process State Machine
 
@@ -76,28 +76,28 @@ Stdout/stderr from child processes are captured via async pipes using `boost::as
 
 ### Adding a New RPC Method
 
-1. Declare in `supervisor-lib/rpc/rpc_server.h`:
-   ```cpp
-   std::string handle_my_method(const std::vector<std::string>& params);
-   ```
+Register a lambda in `supervisor-app/supervisord.cpp` where the other handlers are:
 
-2. Implement in `supervisor-lib/rpc/rpc_server.cpp`.
-
-3. Register in `register_handlers()`:
-   ```cpp
-   handlers_["supervisor.myMethod"] = [this](auto& p) { return handle_my_method(p); };
-   ```
+```cpp
+rpc_server_ptr_->register_handler("supervisor.myMethod", [this](const RpcParams& params) {
+    // Access process_manager_, config_, etc. via Supervisord members
+    return xmlrpc::format_response("<string>ok</string>");
+});
+```
 
 ### Adding a New supervisorctl Command
 
-1. Add handler in `supervisor-app/supervisorctl.cpp`:
+1. Add a member function to `SupervisorCtlClient` in `supervisor-app/supervisorctl.cpp`:
    ```cpp
-   void handle_mycommand(SupervisorCtlClient& client, const std::vector<std::string>& args);
+   int cmdMyCommand_(const RpcParams& args) {
+       // Use rpc_call_() to invoke RPC methods
+       return 0;
+   }
    ```
 
-2. Wire it in `execute_command()`:
+2. Add an entry to the `constexpr commands_[]` table:
    ```cpp
-   if (cmd == "mycommand") { handle_mycommand(client, args); return 0; }
+   { "mycommand", "<args>", "Description", &SupervisorCtlClient::cmdMyCommand_ },
    ```
 
 ### Adding a New Busybox Mode

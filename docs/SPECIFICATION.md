@@ -19,6 +19,7 @@ This is a **minimal** replacement focusing on:
 - Simple autorestart behavior (no "unexpected" mode)
 - Size-based log rotation only
 - Configuration reload via restart only
+- Foreground only (no daemon mode) — runs under init system (OpenRC, systemd, Docker)
 
 ## 2. Functional Requirements
 
@@ -274,7 +275,6 @@ Use Boost.Log's rotation capabilities configured for size-based rotation:
 - Comprehensive error handling
 - Edge case testing
 - Signal handling (SIGTERM, SIGHUP, etc.)
-- Daemon mode (double fork, setsid)
 - PID file support
 - Integration testing
 - Documentation
@@ -313,9 +313,33 @@ Use Boost.Log's rotation capabilities configured for size-based rotation:
 - Environment variable expansion beyond %(program_name)s
 - Advanced stdout/stderr options (backlog, capture_maxbytes)
 
-## 6. Future Extensions
+## 6. Security
 
-### 6.1 Potential Enhancements
+### 6.1 Threat Model
+
+The daemon runs as root and spawns arbitrary processes — security is critical.
+
+**Attackers**:
+- **Malicious local user** — can connect to Unix socket, create symlinks. Goal: privilege escalation
+- **Compromised child process** — running as unprivileged user, can access supervisor socket. Goal: affect other processes
+- **Configuration attacker** — can modify config files. Goal: execute arbitrary code as root
+
+**Assets to protect**: root privilege, process execution control, system stability, log confidentiality, configuration integrity
+
+### 6.2 Implemented Hardening
+
+- **Socket permissions** — chmod 0600 before `listen()` to avoid TOCTOU race; socket directory validated
+- **Config file security** — `lstat()` rejects symlinks; ownership must match running uid; world-writable rejected
+- **Environment sanitization** — variable names restricted to `[A-Za-z0-9_]`; null bytes rejected in values
+- **Privilege drop** — correct order (initgroups → setgid → setuid); real+effective uid/gid verified after drop
+- **Path validation** — log paths canonicalized and restricted to allowed directories; command paths must be absolute
+- **RPC limits** — 1 MB max request size
+- **No shell execution** — `execvp()` with quote-aware tokenizer, no `system()` or `popen()`
+- **Async-safe signals** — Boost.Asio `signal_set` for SIGCHLD handling
+
+## 7. Future Extensions
+
+### 7.1 Potential Enhancements
 - Resource limits (CPU, memory) per process via cgroups
 - Systemd integration improvements
 - Metrics/monitoring endpoint
@@ -323,39 +347,39 @@ Use Boost.Log's rotation capabilities configured for size-based rotation:
 - Hot configuration reload
 - More sophisticated retry backoff strategies
 
-### 6.2 Performance Targets
+### 7.2 Performance Targets
 - Binary size: < 500KB (stripped)
 - Memory footprint: < 5MB resident (managing 10 processes)
 - Startup time: < 100ms
 - Process spawn latency: < 50ms
 
-## 7. Testing Strategy
+## 8. Testing Strategy
 
-### 7.1 Unit Tests
+### 8.1 Unit Tests
 - Configuration parsing (various valid/invalid configs)
 - State machine transitions
 - Log rotation logic
 - Variable substitution
 
-### 7.2 Integration Tests
+### 8.2 Integration Tests
 - End-to-end process lifecycle
 - supervisorctl commands
 - Configuration reload
 - Crash recovery
 - Log rotation under load
 
-### 7.3 Compatibility Tests
+### 8.3 Compatibility Tests
 - Drop-in replacement test with actual embedded system configs
 - supervisorctl compatibility (Python client against C++ server)
 
-## 8. Deployment
+## 9. Deployment
 
-### 8.1 OpenRC Integration
+### 9.1 OpenRC Integration
 - Init script in `/etc/init.d/supervisord`
 - Start on boot: `rc-update add supervisord default`
 - Standard OpenRC commands: `rc-service supervisord start|stop|restart`
 
-### 8.2 Installation
+### 9.2 Installation
 - Single binary: `/usr/local/bin/supervisord`
 - CLI tool: `/usr/local/bin/supervisorctl`
 - Default config: `/etc/supervisord.conf`
