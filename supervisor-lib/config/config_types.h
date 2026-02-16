@@ -68,8 +68,9 @@ struct SupervisordConfig {
     logger::LogLevel loglevel{logger::LogLevel::INFO};
     std::string user{"root"};
     std::filesystem::path childlogdir{"/var/log/supervisor"};
+    std::filesystem::path pidfile;
 
-    // Future: pidfile, umask, nodaemon, minfds, minprocs, etc.
+    // Future: umask, minfds, minprocs, etc.
 };
 
 /**

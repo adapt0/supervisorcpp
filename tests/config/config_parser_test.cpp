@@ -39,6 +39,7 @@ command=/bin/echo test_app
     BOOST_CHECK(config.supervisord.loglevel == LogLevel::INFO);
     BOOST_CHECK_EQUAL(config.supervisord.user, "root");
     BOOST_CHECK_EQUAL(config.supervisord.childlogdir.string(), "/var/log/supervisor");
+    BOOST_CHECK_EQUAL(config.supervisord.pidfile.string(), "");
 
     // Check supervisorctl
     BOOST_CHECK_EQUAL(config.supervisorctl.serverurl, "unix:///run/supervisord.sock");
@@ -244,6 +245,7 @@ BOOST_AUTO_TEST_CASE(TestParseActualFile) {
         BOOST_CHECK_EQUAL(config.unix_http_server.socket_file.string(), "/tmp/test_supervisor.sock");
         BOOST_CHECK_EQUAL(config.supervisord.loglevel, LogLevel::DEBUG);
         BOOST_CHECK_EQUAL(config.supervisord.user, "testuser");
+        BOOST_CHECK_EQUAL(config.supervisord.pidfile.string(), "/tmp/test_supervisord.pid");
 
         BOOST_REQUIRE_EQUAL(config.programs.size(), 1);
         const auto& prog = config.programs[0];

@@ -4,9 +4,12 @@
 
 #include <filesystem>
 #include <map>
+#include <span>
 #include <unistd.h>
 
 namespace supervisorcpp::util {
+
+namespace fs = std::filesystem;
 
 /**
  * Security validation exception
@@ -21,7 +24,7 @@ public:
  * Canonicalize path and validate it doesn't escape allowed directory
  * Returns absolute path with symlinks resolved
  */
-std::filesystem::path validate_canonicalize_path(const std::filesystem::path& path, const std::filesystem::path& allowed_prefix);
+fs::path validate_canonicalize_path(const fs::path& path, const fs::path& allowed_prefix);
 
 /**
  * Validate configuration file security
@@ -30,7 +33,10 @@ std::filesystem::path validate_canonicalize_path(const std::filesystem::path& pa
  * - Must be a regular file (not symlink)
  * - Parent directory must be secure
  */
-void validate_config_file_security(const std::filesystem::path& config_file);
+void validate_config_file_security(const fs::path& config_file);
+
+// Helper: validate path is under one of the allowed directories
+fs::path validate_path_in_allowed_dirs(const fs::path& path, std::span<const fs::path> allowed_dirs, const std::string& description);
 
 /**
  * Validate log file path is safe
@@ -38,7 +44,15 @@ void validate_config_file_security(const std::filesystem::path& config_file);
  * - No path traversal
  * - Parent directory must exist and be writable
  */
-std::filesystem::path validate_log_path(const std::filesystem::path& log_path);
+fs::path validate_log_path(const fs::path& log_path);
+
+/**
+ * Validate pidfile path is safe
+ * - Must be under /run, /var/run, or /tmp
+ * - No path traversal
+ * - Must be absolute path
+ */
+fs::path validate_pidfile_path(const fs::path& pidfile_path);
 
 /**
  * Validate command path is absolute and exists
@@ -73,13 +87,13 @@ void close_inherited_fds();
  * Validate socket directory is not world-writable
  * Prevents TOCTOU attacks between unlink and bind in shared directories
  */
-void validate_socket_directory(const std::filesystem::path& socket_path);
+void validate_socket_directory(const fs::path& socket_path);
 
 /**
  * Set secure permissions on Unix socket
  * chmod 0600 (owner read/write only)
  */
-void set_socket_permissions(const std::filesystem::path& socket_path);
+void set_socket_permissions(const fs::path& socket_path);
 
 /**
  * Verify privilege drop was successful

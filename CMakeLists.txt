@@ -76,13 +76,22 @@ add_custom_command(TARGET supervisor POST_BUILD
 # Enable testing
 enable_testing()
 
-# Copy test data to build directory (fixes ownership for root-owned validation)
-file(COPY tests/data DESTINATION ${CMAKE_BINARY_DIR}/tests)
+# Copy test data to build directory at build time (not configure time)
+# This ensures changes to test data are reflected without re-running cmake
+file(GLOB_RECURSE TEST_DATA_FILES "${CMAKE_SOURCE_DIR}/tests/data/*")
+add_custom_target(copy_test_data ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/tests/data
+        ${CMAKE_BINARY_DIR}/tests/data
+    DEPENDS ${TEST_DATA_FILES}
+    COMMENT "Copying test data to build directory"
+)
 
 # Helper: define a test executable from a single source file
 function(add_unit_test TARGET_NAME SOURCE_FILE)
     add_executable(${TARGET_NAME} ${SOURCE_FILE})
     target_link_libraries(${TARGET_NAME} PRIVATE supervisor_lib Boost::unit_test_framework)
+    add_dependencies(${TARGET_NAME} copy_test_data)
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
 endfunction()
 

@@ -132,6 +132,7 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
                 throw ConfigParseError("[supervisord] loglevel - " + std::string(e.what()));
             }
         });
+        pt_get(section, "pidfile", config.supervisord.pidfile);
         pt_get(section, "user", config.supervisord.user);
     }
 

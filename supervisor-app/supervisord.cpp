@@ -2,6 +2,7 @@
 #include "config/config_parser.h"
 #include "logger/logger.h"
 #include "rpc/xmlrpc.h"
+#include "util/pidfile.h"
 #include <iostream>
 #include <csignal>
 #include <boost/program_options.hpp>
@@ -173,9 +174,9 @@ int supervisord_main(int argc, char* argv[]) {
         desc.add_options()
             ("help,h", "Show this help message")
             ("version,v", "Show version information")
-            ("config,c", po::value<std::string>()->default_value("/etc/supervisord.conf"),
-             "Configuration file path")
+            ("configuration,c", po::value<std::string>()->default_value("/etc/supervisord.conf"), "Configuration file path")
             ("nodaemon,n", "For compatibility - always runs in foreground")
+            ("pidfile,p", po::value<std::string>(), "Path to pid file")
         ;
 
         po::variables_map vm;
@@ -192,16 +193,21 @@ int supervisord_main(int argc, char* argv[]) {
             return 0;
         }
 
-        const auto config_file = vm["config"].as<std::string>();
-
-        std::cout << "Loading configuration from: " << config_file << std::endl;
+        const auto config_file = vm["configuration"].as<std::string>();
         const auto config = config::ConfigParser::parse_file(config_file);
 
         logger::init_logging(config.supervisord.logfile, config.supervisord.loglevel);
         LOG_INFO << "Configuration file: " << config_file;
 
-        Supervisord daemon(config);
-        const int rc = daemon.run();
+        // Create pidfile guard (command-line overrides config file)
+        // std::optional<util::PidFileGuard> pidfile_guard;
+        const auto pidfile_guard = [&config, &vm]() -> std::optional<util::PidFileGuard> {
+            if (vm.count("pidfile")) return util::PidFileGuard{vm["pidfile"].as<std::string>()};
+            if (!config.supervisord.pidfile.empty()) return util::PidFileGuard{config.supervisord.pidfile};
+            return std::optional<util::PidFileGuard>{};
+        }();
+
+        const int rc = Supervisord{config}.run();
 
         logger::shutdown_logging();
         return rc;

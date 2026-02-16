@@ -1,7 +1,5 @@
 #include "secure.h"
 #include <algorithm>
-#include <filesystem>
-#include <map>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -9,8 +7,6 @@
 #include <sys/stat.h>
 
 namespace supervisorcpp::util {
-
-namespace fs = std::filesystem;
 
 inline fs::path validate_canonicalize_path(const fs::path& path, const fs::path& allowed_prefix) {
     // Resolve to canonical path (resolves symlinks, . and ..)
@@ -76,30 +72,50 @@ void validate_config_file_security(const fs::path& config_file) {
     // }
 }
 
+fs::path validate_path_in_allowed_dirs(
+    const fs::path& path,
+    std::span<const fs::path> allowed_dirs,
+    const std::string& description
+) {
+    for (const auto& prefix : allowed_dirs) {
+        try {
+            return validate_canonicalize_path(path, prefix);
+        } catch (const SecurityError&) {
+            // Try next prefix
+        }
+    }
+
+    // Build error message with all allowed directories
+    std::string allowed_str;
+    for (const auto& dir : allowed_dirs) {
+        if (!allowed_str.empty()) allowed_str += ", ";
+        allowed_str += dir.string();
+    }
+    throw SecurityError(description + " must be under " + allowed_str + " - got: " + path.string());
+}
+
 fs::path validate_log_path(const fs::path& log_path) {
-    // Allowed base directories for logs
-    const fs::path allowed[] = {
+    static const fs::path allowed[] = {
         fs::weakly_canonical("/var/log"),
         fs::weakly_canonical("/tmp"),
         fs::weakly_canonical(fs::temp_directory_path()),
     };
+    return validate_path_in_allowed_dirs(log_path, allowed, "Log file");
+}
 
-    // Try to canonicalize against each allowed prefix
-    for (const auto& prefix : allowed) {
-        try {
-            const auto canonical = validate_canonicalize_path(log_path, prefix);
-            return canonical;
-        } catch (const SecurityError&) {
-            // std::cout << "validate_log_path " << e.what() << '\n';
-        }
+fs::path validate_pidfile_path(const fs::path& pidfile_path) {
+    // Must be absolute path
+    if (!pidfile_path.is_absolute()) {
+        throw SecurityError("Pidfile path must be absolute: " + pidfile_path.string());
     }
 
-    std::string allowed_str;
-    for (const auto& a : allowed) {
-        if (!allowed_str.empty()) allowed_str += " or ";
-        allowed_str += a;
-    }
-    throw SecurityError("Log file must be under " + allowed_str + " - " + log_path.string());
+    static const fs::path allowed[] = {
+        fs::weakly_canonical("/run"),
+        fs::weakly_canonical("/var/run"),
+        fs::weakly_canonical("/tmp"),
+        fs::weakly_canonical(fs::temp_directory_path()),
+    };
+    return validate_path_in_allowed_dirs(pidfile_path, allowed, "Pidfile");
 }
 
 void validate_command_path(const std::string& command) {

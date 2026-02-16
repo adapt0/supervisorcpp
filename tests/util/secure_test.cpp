@@ -122,6 +122,34 @@ BOOST_AUTO_TEST_CASE(secure__validate_log_path) {
         SecurityError);
 }
 
+// --- validate_pidfile_path ---
+
+BOOST_AUTO_TEST_CASE(secure__validate_pidfile_path) {
+    // Valid pidfile in /tmp
+    const auto result = validate_pidfile_path("/tmp/test.pid");
+    BOOST_CHECK(result.string().find("tmp") != std::string::npos);
+
+    // Valid pidfile in /run (if it exists)
+    if (fs::exists("/run")) {
+        BOOST_CHECK_NO_THROW(validate_pidfile_path("/run/test.pid"));
+    }
+
+    // Relative path rejected
+    BOOST_CHECK_THROW(
+        validate_pidfile_path("relative.pid"),
+        SecurityError);
+
+    // Paths outside allowed prefixes rejected
+    BOOST_CHECK_THROW(
+        validate_pidfile_path("/home/user/evil.pid"),
+        SecurityError);
+
+    // Path traversal rejected
+    BOOST_CHECK_THROW(
+        validate_pidfile_path("/tmp/../etc/passwd"),
+        SecurityError);
+}
+
 // --- verify_privilege_drop ---
 
 BOOST_AUTO_TEST_CASE(secure__verify_privilege_drop) {
