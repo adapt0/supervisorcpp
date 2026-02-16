@@ -9,6 +9,7 @@
  */
 
 #include "logger/logger.h"
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -18,23 +19,24 @@ int supervisorctl_main(int argc, char* argv[]);
 int main(int argc, char* argv[]) {
     supervisorcpp::logger::init_logging();
 
-    // run as supervisord by default
-    bool as_supervisorctl = false;
-    int arg_ofs = 0;
-
+    // default to supervisord, unless we are named supervisorctl, or a ctl arg is specified
     const auto program_name = std::filesystem::path{argv[0]}.filename().string();
-    if (program_name == "supervisorctl") {
-        as_supervisorctl = true; // invoked as supervisorctl
+    if (program_name == "supervisord") {
+        // always supervisord
+    } else if (program_name == "supervisorctl") {
+        return supervisorctl_main(argc, argv); // invoked as supervisorctl
     } else if (argc > 1) {
-        // Also support explicit mode selection via first argument
-        if (argv[1] == std::string_view{"ctl"} || argv[1] == std::string_view{"supervisorctl"}) {
-            arg_ofs = 1; // shift arguments to remove mode selector
-            as_supervisorctl = true;
+        // mode selection, skipping over basic flags to allow for ./supervisor -vv ctl status
+        for (int i = 1; i < argc; ++i) {
+            if ('-' == argv[i][0]) continue; // skip over options
+            if (argv[i] != std::string_view{"ctl"}) break;
+
+            // remove "ctl" by placing it at the end
+            std::rotate(&argv[i], &argv[i + 1], &argv[argc]);
+            --argc;
+            return supervisorctl_main(argc, argv); // invoked as supervisorctl
         }
     }
 
-    return (as_supervisorctl) 
-        ? supervisorctl_main(argc - arg_ofs, argv + arg_ofs)
-        : supervisord_main(argc, argv)
-    ;
+    return supervisord_main(argc, argv);
 }
