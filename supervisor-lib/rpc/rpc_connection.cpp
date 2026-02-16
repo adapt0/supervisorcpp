@@ -177,9 +177,7 @@ std::string RpcConnection::generate_xmlrpc_response_(const std::string& result) 
     oss << "<?xml version=\"1.0\"?>\n"
         << "<methodResponse>\n"
         << "  <params>\n"
-        << "    <param>\n"
-        << "      " << result << "\n"
-        << "    </param>\n"
+        << "    <param><value>" << result << "</value></param>\n"
         << "  </params>\n"
         << "</methodResponse>\n"
     ;
