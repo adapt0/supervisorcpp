@@ -59,6 +59,38 @@ public:
     SupervisorCtlClient& operator=(SupervisorCtlClient&&) = delete;
 
     /**
+     * Interactive mode
+     */
+    void interactive_mode() {
+        while (true) {
+            std::cout << "supervisor> ";
+
+            std::string line;
+            if (!std::getline(std::cin, line)) break;
+
+            boost::algorithm::trim(line);
+            if (line.empty()) continue;
+
+            // Split into words
+            RpcParams args;
+            boost::algorithm::split(
+                args, line,
+                [](char ch) { return std::isspace(ch); },
+                boost::algorithm::token_compress_on
+            );
+            if (args.empty()) continue;
+
+            const auto method = args.front();
+            args.erase(std::begin(args));
+
+            if (-1 == execute_command(method, args)) {
+                break; // Exit requested
+            }
+        }
+        std::cout << std::endl;
+    }
+
+    /**
      * Execute a supervisorctl command
      */
     int execute_command(const std::string& method, const RpcParams& args) {
@@ -199,6 +231,7 @@ private:
 
             // Build XML-RPC request
             const auto request = build_xmlrpc_request_(method_name, params);
+            LOG_TRACE << "<- " << request;
             const auto http_request = build_http_request_(request);
 
             // Send request
@@ -237,6 +270,8 @@ private:
 
             socket.close();
 
+            LOG_TRACE << "-> " << response_str;
+
             // Check for XML-RPC fault response
             check_fault_(response_str);
 
@@ -270,8 +305,6 @@ private:
     static std::vector<ProcessInfo> parse_process_info_array_(const std::string& xml) {
         try {
             namespace pt = boost::property_tree;
-
-            LOG_TRACE << xml;
 
             pt::ptree tree;
             {
@@ -372,38 +405,6 @@ private:
     boost::asio::io_context io_context_;
 };
 
-/**
- * Interactive mode
- */
-void interactive_mode(SupervisorCtlClient& client) {
-    while (true) {
-        std::cout << "supervisor> ";
-
-        std::string line;
-        if (!std::getline(std::cin, line)) break;
-
-        boost::algorithm::trim(line);
-        if (line.empty()) continue;
-
-        // Split into words
-        RpcParams args;
-        boost::algorithm::split(
-            args, line,
-            [](char ch) { return std::isspace(ch); },
-            boost::algorithm::token_compress_on
-        );
-        if (args.empty()) continue;
-
-        const auto method = args.front();
-        args.erase(std::begin(args));
-
-        if (-1 == client.execute_command(method, args)) {
-            break; // Exit requested
-        }
-    }
-    std::cout << std::endl;
-}
-
 } // namespace supervisorcpp
 
 using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
@@ -470,7 +471,7 @@ int supervisorctl_main(int argc, char* argv[]) {
         // Get remaining arguments as command
         if (args.empty()) {
             // No command specified, enter interactive mode
-            interactive_mode(client);
+            client.interactive_mode();
         } else {
             // Execute single command and exit
             const auto method = args.front();
