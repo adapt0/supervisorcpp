@@ -1,8 +1,9 @@
 #include "version.h"
-#include "config/config_parser.h"
+#include "config/ini_reader.h"
 #include "rpc/rpc_fwd.h"
 #include "rpc/xmlrpc.h"
 #include "util/string.h"
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -13,6 +14,7 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 
 using RpcParams = supervisorcpp::rpc::RpcParams;
@@ -390,9 +392,10 @@ int supervisorctl_main(int argc, char* argv[]) {
         po::options_description desc("supervisorctl - control supervisord processes");
         desc.add_options()
             ("help,h", "Show this help message")
-            ("version,v", "Show version information")
+            ("version", "Show version information")
             ("config,c", po::value<std::string>()->default_value("/etc/supervisord.conf"),
              "Configuration file path")
+            ("serverurl,s", po::value<std::string>(), "Server URL (e.g. unix:///run/supervisord.sock)")
         ;
 
         // Parse known options, leave rest for commands
@@ -420,24 +423,33 @@ int supervisorctl_main(int argc, char* argv[]) {
             return 0;
         }
 
-        supervisorcpp::config::Configuration config;
-        try {
-            // Load config to get socket path
-            const auto config_file = vm["config"].as<std::string>();
-            config = supervisorcpp::config::ConfigParser::parse_file(config_file);
-        } catch (const std::exception& e) {
-            std::cerr << "Warning: Could not load config file: " << e.what() << std::endl;
-            std::cerr << "Using default socket path: /tmp/supervisor.sock" << std::endl;
-            config.supervisorctl.serverurl = "unix:///tmp/supervisor.sock";
-        }
+        // Resolve server URL: CLI arg > config file > default
+        const auto serverurl = [&vm]() -> std::string {
+            if (vm.count("serverurl")) return vm["serverurl"].as<std::string>();
 
-        // Extract socket path from serverurl (unix:///path/to/socket)
-        const auto& serverurl = config.supervisorctl.serverurl;
+            try {
+                // Lightweight read of just [supervisorctl] from config
+                std::ifstream file(vm["config"].as<std::string>());
+                supervisorcpp::config::CommentStrippingBuf filtered(file);
+                std::istream filtered_stream(&filtered);
+                boost::property_tree::ptree tree;
+                boost::property_tree::ini_parser::read_ini(filtered_stream, tree);
+                return tree.get<std::string>("supervisorctl.serverurl", "unix:///run/supervisord.sock");
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: Could not load config: " << e.what() << std::endl;
+                return "unix:///run/supervisord.sock";
+            }
+        }();
+
+        // Extract socket path from serverurl
         std::string socket_path;
-        if (serverurl.find("unix://") == 0) {
+        if (serverurl.starts_with("unix://")) {
             socket_path = serverurl.substr(7);
+        } else if (serverurl.starts_with("/")) {
+            socket_path = serverurl;
         } else {
-            std::cerr << "Error: Only Unix socket URLs are supported" << std::endl;
+            std::cerr << "Error: '" << serverurl << "' is not a valid server URL;"
+                      << " use a unix:// URL or a socket path" << std::endl;
             return 1;
         }
 

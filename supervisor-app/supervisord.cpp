@@ -163,8 +163,6 @@ void Supervisord::register_rpc_handlers_() {
 int supervisord_main(int argc, char* argv[]) {
     using namespace supervisorcpp;
 
-    logger::init_logging();
-
     try {
         namespace po = boost::program_options;
 

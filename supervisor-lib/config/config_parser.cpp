@@ -1,4 +1,5 @@
 #include "config_parser.h"
+#include "ini_reader.h"
 #include "ptree_ext.h"
 #include "../logger/logger.h"
 #include "../util/secure.h"
@@ -17,36 +18,6 @@ constexpr const auto MAX_DEPTH = 10;
 
 namespace fs = std::filesystem;
 namespace pt = boost::property_tree;
-
-// Filtering streambuf that strips inline ; comments before INI parsing
-class CommentStrippingBuf : public std::streambuf {
-public:
-    explicit CommentStrippingBuf(std::istream& source) : source_(source) {}
-
-protected:
-    int_type underflow() override {
-        if (!std::getline(source_, buf_)) return traits_type::eof();
-        buf_ = strip_inline_comment_(buf_);
-        buf_ += '\n';
-        setg(buf_.data(), buf_.data(), buf_.data() + buf_.size());
-        return traits_type::to_int_type(*gptr());
-    }
-
-private:
-    // Strip supervisord-style inline comments (; preceded by whitespace)
-    static std::string strip_inline_comment_(const std::string& line) {
-        for (size_t i = 1; i < line.size(); ++i) {
-            if (line[i] == ';' && (line[i - 1] == ' ' || line[i - 1] == '\t')) {
-                const auto end = line.find_last_not_of(" \t", i - 1);
-                return (end != std::string::npos) ? line.substr(0, end + 1) : "";
-            }
-        }
-        return line;
-    }
-
-    std::istream& source_;
-    std::string buf_;
-};
 
 
 Configuration ConfigParser::parse_file(const fs::path& config_file) {
