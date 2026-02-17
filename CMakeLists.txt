@@ -31,22 +31,22 @@ find_package(Boost 1.80 REQUIRED COMPONENTS
 )
 
 # Create static library for easier testing
-add_library(supervisor_lib STATIC 
-    supervisor-lib/config/config_parser.cpp
-    supervisor-lib/logger/log_levels.cpp
-    supervisor-lib/logger/log_writer.cpp
-    supervisor-lib/logger/logger.cpp
-    supervisor-lib/process/process.cpp
-    supervisor-lib/process/process_manager.cpp
-    supervisor-lib/rpc/rpc_connection.cpp
-    supervisor-lib/rpc/rpc_server.cpp
-    supervisor-lib/rpc/xmlrpc.cpp
-    supervisor-lib/util/platform.cpp
-    supervisor-lib/util/secure.cpp
-    supervisor-lib/util/string.cpp
+add_library(supervisor_lib STATIC
+    supervisor-lib/src/config/config_parser.cpp
+    supervisor-lib/src/logger/log_levels.cpp
+    supervisor-lib/src/logger/log_writer.cpp
+    supervisor-lib/src/logger/logger.cpp
+    supervisor-lib/src/process/process.cpp
+    supervisor-lib/src/process/process_manager.cpp
+    supervisor-lib/src/rpc/rpc_connection.cpp
+    supervisor-lib/src/rpc/rpc_server.cpp
+    supervisor-lib/src/rpc/xmlrpc.cpp
+    supervisor-lib/src/util/platform.cpp
+    supervisor-lib/src/util/secure.cpp
+    supervisor-lib/src/util/string.cpp
 )
 target_include_directories(supervisor_lib PUBLIC
-    ${CMAKE_SOURCE_DIR}/supervisor-lib
+    ${CMAKE_SOURCE_DIR}/supervisor-lib/src
 )
 target_link_libraries(supervisor_lib PUBLIC
     Boost::headers
@@ -68,13 +68,16 @@ add_custom_target(git_version ALL
 
 # Unified supervisor binary (busybox-style multi-call binary)
 add_executable(supervisor
-    supervisor-app/args_parser.cpp
-    supervisor-app/main.cpp
-    supervisor-app/supervisord.cpp
-    supervisor-app/supervisorctl.cpp
+    supervisor-app/src/args_parser.cpp
+    supervisor-app/src/main.cpp
+    supervisor-app/src/supervisord.cpp
+    supervisor-app/src/supervisorctl.cpp
 )
 target_link_libraries(supervisor PRIVATE supervisor_lib)
-target_include_directories(supervisor PRIVATE ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(supervisor PRIVATE
+    ${CMAKE_BINARY_DIR}/generated
+    ${CMAKE_SOURCE_DIR}/supervisor-app/src
+)
 add_dependencies(supervisor git_version)
 
 # Create symlinks in build directory for testing/development
@@ -92,32 +95,45 @@ enable_testing()
 
 # Copy test data to build directory at build time (not configure time)
 # This ensures changes to test data are reflected without re-running cmake
-file(GLOB_RECURSE TEST_DATA_FILES "${CMAKE_SOURCE_DIR}/tests/data/*")
+file(GLOB_RECURSE TEST_DATA_FILES "${CMAKE_SOURCE_DIR}/supervisor-lib/tests/data/*")
 add_custom_target(copy_test_data ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/tests/data
+        ${CMAKE_SOURCE_DIR}/supervisor-lib/tests/data
         ${CMAKE_BINARY_DIR}/tests/data
     DEPENDS ${TEST_DATA_FILES}
     COMMENT "Copying test data to build directory"
 )
 
-# Helper: define a test executable from a single source file
-function(add_unit_test TARGET_NAME SOURCE_FILE)
+# Helper: define a lib test executable from a single source file
+function(add_lib_test TARGET_NAME SOURCE_FILE)
     add_executable(${TARGET_NAME} ${SOURCE_FILE})
     target_link_libraries(${TARGET_NAME} PRIVATE supervisor_lib Boost::unit_test_framework)
     add_dependencies(${TARGET_NAME} copy_test_data)
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
 endfunction()
 
-add_unit_test(config_test              tests/config/config_parser_test.cpp)
-add_unit_test(parser_robustness_test   tests/config/parser_robustness_test.cpp)
-add_unit_test(integration_test         tests/integration/integration_test.cpp)
-add_unit_test(rpc_xml_test             tests/rpc/xmlrpc_test.cpp)
-add_unit_test(util_string_test         tests/util/string_test.cpp)
-add_unit_test(util_secure_test         tests/util/secure_test.cpp)
-add_unit_test(log_writer_test          tests/logger/log_writer_test.cpp)
-add_unit_test(rpc_dispatch_test        tests/rpc/rpc_dispatch_test.cpp)
-add_unit_test(rpc_connection_test      tests/rpc/rpc_connection_test.cpp)
+# Helper: define an app test executable (links lib + has app include path)
+function(add_app_test TARGET_NAME SOURCE_FILE)
+    add_executable(${TARGET_NAME} ${SOURCE_FILE})
+    target_link_libraries(${TARGET_NAME} PRIVATE supervisor_lib Boost::unit_test_framework)
+    target_include_directories(${TARGET_NAME} PRIVATE
+        ${CMAKE_SOURCE_DIR}/supervisor-app/src
+        ${CMAKE_BINARY_DIR}/generated
+    )
+    add_dependencies(${TARGET_NAME} copy_test_data)
+    add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME})
+endfunction()
+
+# Library tests
+add_lib_test(config_test              supervisor-lib/tests/config/config_parser_test.cpp)
+add_lib_test(parser_robustness_test   supervisor-lib/tests/config/parser_robustness_test.cpp)
+add_lib_test(integration_test         supervisor-lib/tests/integration/integration_test.cpp)
+add_lib_test(rpc_xml_test             supervisor-lib/tests/rpc/xmlrpc_test.cpp)
+add_lib_test(util_string_test         supervisor-lib/tests/util/string_test.cpp)
+add_lib_test(util_secure_test         supervisor-lib/tests/util/secure_test.cpp)
+add_lib_test(log_writer_test          supervisor-lib/tests/logger/log_writer_test.cpp)
+add_lib_test(rpc_dispatch_test        supervisor-lib/tests/rpc/rpc_dispatch_test.cpp)
+add_lib_test(rpc_connection_test      supervisor-lib/tests/rpc/rpc_connection_test.cpp)
 
 # Install targets
 install(TARGETS supervisor
