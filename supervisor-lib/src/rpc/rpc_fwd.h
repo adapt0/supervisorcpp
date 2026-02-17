@@ -12,6 +12,7 @@ class RpcConnection;
 using RpcConnectionPtr = std::shared_ptr<RpcConnection>;
 
 class RpcServer;
+using RpcServerPtr = std::shared_ptr<RpcServer>;
 using RpcServerWeak = std::weak_ptr<RpcServer>;
 
 using RpcParams = std::vector<std::string>;

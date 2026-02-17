@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE RpcDispatchTest
 #include <boost/test/unit_test.hpp>
-#include "../test_util.h"
 #include "rpc/rpc_server.h"
+#include "util/test_util.h"
 #include <boost/asio.hpp>
 
 namespace rpc = supervisorcpp::rpc;
@@ -10,7 +10,7 @@ using TempManager = test_util::TempManager;
 struct RpcFixture {
     TempManager::Cleanup sock = TempManager::file("rpc_dispatch.sock");
     boost::asio::io_context io;
-    std::shared_ptr<rpc::RpcServer> server = rpc::RpcServer::create(io, sock.str());
+    rpc::RpcServerPtr server = rpc::RpcServer::create(io, sock.str());
 };
 
 BOOST_FIXTURE_TEST_CASE(rpc_dispatch__routes_to_handler, RpcFixture) {

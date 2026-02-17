@@ -266,6 +266,18 @@ private:
         { "quit",     "",           "",                     &SupervisorCtlClient::cmdExit_ },
     };
 
+    /// retry a socket operation on EINTR (signal interrupted syscall)
+    template <typename FUNC>
+    requires std::invocable<FUNC, boost::system::error_code&>
+    static void retry_eintr_(FUNC&& op) {
+        do {
+            boost::system::error_code ec;
+            op(ec);
+            if (boost::asio::error::interrupted == ec) continue;
+            if (ec) throw boost::system::system_error(ec);
+        } while (false);
+    }
+
     /**
      * Call RPC method
      * Creates a fresh socket per call so the client is reusable in interactive mode
@@ -275,9 +287,8 @@ private:
 
         try {
             stream_protocol::socket socket(io_context_);
-            socket.connect(
-                stream_protocol::endpoint{socket_path_}
-            );
+            const auto endpoint = stream_protocol::endpoint{socket_path_};
+            retry_eintr_([&](auto& ec) { socket.connect(endpoint, ec); });
 
             // Build XML-RPC request
             const auto request = build_xmlrpc_request_(method_name, params);
@@ -285,11 +296,11 @@ private:
             const auto http_request = build_http_request_(request);
 
             // Send request
-            boost::asio::write(socket, boost::asio::buffer(http_request));
+            retry_eintr_([&](auto&& ec) { boost::asio::write(socket, boost::asio::buffer(http_request), ec); });
 
             // Read response
             boost::asio::streambuf response;
-            boost::asio::read_until(socket, response, "\r\n\r\n");
+            retry_eintr_([&](auto&& ec) { boost::asio::read_until(socket, response, "\r\n\r\n", ec); });
 
             // Read remaining body
             std::string response_str;
@@ -312,8 +323,10 @@ private:
 
                     if (bytes_read < content_length) {
                         // Need to read more from socket
-                        size_t remaining = content_length - bytes_read;
-                        boost::asio::read(socket, boost::asio::buffer(&response_str[bytes_read], remaining));
+                        const size_t remaining = content_length - bytes_read;
+                        retry_eintr_([&](auto& ec) {
+                            boost::asio::read(socket, boost::asio::buffer(&response_str[bytes_read], remaining), ec);
+                        });
                     }
                 }
             }

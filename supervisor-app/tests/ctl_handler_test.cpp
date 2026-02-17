@@ -8,9 +8,9 @@
 #include <boost/test/unit_test.hpp>
 #include "ctl/supervisorctl.h"
 #include "daemon/rpc_handlers.h"
-#include "../../supervisor-lib/tests/test_util.h"
 #include "process/process_manager.h"
 #include "rpc/rpc_server.h"
+#include "util/test_util.h"
 #include <thread>
 #include <boost/asio.hpp>
 
@@ -20,85 +20,81 @@ using namespace std::chrono_literals;
 using TempManager = test_util::TempManager;
 using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
 
-/// Sleep-poll until condition is met or timeout (does not touch io_context)
-static bool poll_until(std::function<bool()> condition,
-                       std::chrono::milliseconds timeout = 5000ms) {
-    const auto start = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start < timeout) {
-        if (condition()) return true;
-        std::this_thread::sleep_for(50ms);
-    }
-    return false;
-}
-
 struct CtlFixture {
-    TempManager::Cleanup sock = TempManager::file("ctl_test.sock");
-    TempManager::Cleanup log1 = TempManager::file("ctl_test_d.log");
-    TempManager::Cleanup log2 = TempManager::file("ctl_test_p.log");
-
-    boost::asio::io_context io;
-    process::ProcessManager pm{io, 100ms};
-    std::shared_ptr<rpc::RpcServer> server = rpc::RpcServer::create(io, sock.str());
-
-    std::ostringstream out;
-    std::ostringstream err;
-
-    std::jthread server_thread;
-
     CtlFixture() {
         supervisorcpp::config::ProgramConfig cfg;
         cfg.name = "testproc";
         cfg.command = "/bin/sleep 60";
         cfg.autorestart = false;
         cfg.startsecs = 1;
-        cfg.stdout_log.file = log2.path();
-        pm.add_process(cfg);
+        cfg.stdout_log.file = log2_.path();
+        pm_.add_process(cfg);
 
-        supervisorcpp::register_process_handlers(*server, pm);
-        server->start();
+        supervisorcpp::register_process_handlers(*server_, pm_);
+        server_->start();
 
         // Run io_context in background so server can handle connections
-        server_thread = std::jthread([this](std::stop_token) {
-            auto work = boost::asio::make_work_guard(io);
-            io.run();
+        server_thread_ = std::jthread([this](std::stop_token) {
+            const auto work = boost::asio::make_work_guard(io_);
+            io_.run();
         });
     }
 
     ~CtlFixture() {
-        pm.stop_all();
-        server->stop();
-        io.stop();
-        if (server_thread.joinable()) server_thread.join();
+        pm_.stop_all();
+        server_->stop();
+        io_.stop();
+        if (server_thread_.joinable()) server_thread_.join();
     }
 
     SupervisorCtlClient make_client() {
-        out.str("");
-        err.str("");
-        return SupervisorCtlClient{sock.str(), out, err};
+        out_.str("");
+        err_.str("");
+        return SupervisorCtlClient{sock_.str(), out_, err_};
     }
 
-    void check_out(std::string_view expected) {
-        BOOST_CHECK_MESSAGE(out.str().contains(expected),
-            "expected '" << expected << "' in stdout: \"" << out.str() << "\"");
+    void check_out_contains(std::string_view expected) {
+        BOOST_CHECK_MESSAGE(out_.str().contains(expected),
+            "expected '" << expected << "' in stdout: \"" << out_.str() << "\"");
     }
-    void check_err(std::string_view expected) {
-        BOOST_CHECK_MESSAGE(err.str().contains(expected),
-            "expected '" << expected << "' in stderr: \"" << err.str() << "\"");
+    void check_err_contains(std::string_view expected) {
+        BOOST_CHECK_MESSAGE(err_.str().contains(expected),
+            "expected '" << expected << "' in stderr: \"" << err_.str() << "\"");
+    }
+    auto err_str() const { return err_.str(); }
+
+    /// Sleep-poll until condition is met or timeout (does not touch io_context)
+    static bool poll_until(std::function<bool()> condition, std::chrono::milliseconds timeout = 5000ms) {
+        const auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < timeout) {
+            if (condition()) return true;
+            std::this_thread::sleep_for(50ms);
+        }
+        return false;
     }
 
-    void wait_running() {
-        poll_until([this] {
-            const auto info = pm.get_all_process_info();
-            return !info.empty() && info[0].state == process::State::RUNNING;
+    void wait_for(process::State state) {
+        poll_until([this, state] {
+            const auto info = pm_.get_all_process_info();
+            return !info.empty() && info[0].state == state;
         });
     }
 
-    void wait_stopped() {
-        poll_until([this] {
-            const auto info = pm.get_all_process_info();
-            return !info.empty() && info[0].state == process::State::STOPPED;
-        });
-    }
+    auto& pm() noexcept { return pm_; }
+
+private:
+    TempManager::Cleanup sock_ = TempManager::file("ctl_test.sock");
+    TempManager::Cleanup log1_ = TempManager::file("ctl_test_d.log");
+    TempManager::Cleanup log2_ = TempManager::file("ctl_test_p.log");
+
+    boost::asio::io_context io_;
+    process::ProcessManager pm_{io_, 100ms};
+    rpc::RpcServerPtr server_ = rpc::RpcServer::create(io_, sock_.str());
+
+    std::ostringstream out_;
+    std::ostringstream err_;
+
+    std::jthread server_thread_;
 };
 
 
@@ -108,21 +104,21 @@ BOOST_FIXTURE_TEST_CASE(ctl__start_bad_name, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("start", {"nonexistent"});
     BOOST_CHECK_EQUAL(rc, 1);
-    check_err("no such process");
+    check_err_contains("no such process");
 }
 
 BOOST_FIXTURE_TEST_CASE(ctl__stop_bad_name, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("stop", {"nonexistent"});
     BOOST_CHECK_EQUAL(rc, 1);
-    check_err("no such process");
+    check_err_contains("no such process");
 }
 
 BOOST_FIXTURE_TEST_CASE(ctl__status_bad_name, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("status", {"nonexistent"});
     BOOST_CHECK_EQUAL(rc, 1);
-    check_err("no such process");
+    check_err_contains("no such process");
 }
 
 // --- Edge case: stop a stopped process ---
@@ -131,19 +127,19 @@ BOOST_FIXTURE_TEST_CASE(ctl__stop_stopped_process, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("stop", {"testproc"});
     BOOST_CHECK_EQUAL(rc, 1);
-    check_err("not running");
+    check_err_contains("not running");
 }
 
 // --- Edge case: start an already-running process ---
 
 BOOST_FIXTURE_TEST_CASE(ctl__start_already_running, CtlFixture) {
-    pm.start_process("testproc");
-    wait_running();
+    pm().start_process("testproc");
+    wait_for(process::State::RUNNING);
 
     auto client = make_client();
     const auto rc = client.execute_command("start", {"testproc"});
     BOOST_CHECK_EQUAL(rc, 1);
-    check_err("already running");
+    check_err_contains("already running");
 }
 
 // --- Restart of a stopped process (tolerates NOT_RUNNING on stop) ---
@@ -151,8 +147,9 @@ BOOST_FIXTURE_TEST_CASE(ctl__start_already_running, CtlFixture) {
 BOOST_FIXTURE_TEST_CASE(ctl__restart_stopped_process, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("restart", {"testproc"});
+    BOOST_CHECK_EQUAL(err_str(), "");
     BOOST_CHECK_EQUAL(rc, 0);
-    check_out("restarted");
+    check_out_contains("restarted");
 }
 
 // --- Normal start and stop ---
@@ -161,17 +158,19 @@ BOOST_FIXTURE_TEST_CASE(ctl__start_and_stop, CtlFixture) {
     {
         auto client = make_client();
         const auto rc = client.execute_command("start", {"testproc"});
+        BOOST_CHECK_EQUAL(err_str(), "");
         BOOST_CHECK_EQUAL(rc, 0);
-        check_out("started");
+        check_out_contains("started");
     }
 
-    wait_running();
+    wait_for(process::State::RUNNING);
 
     {
         auto client = make_client();
         const auto rc = client.execute_command("stop", {"testproc"});
+        BOOST_CHECK_EQUAL(err_str(), "");
         BOOST_CHECK_EQUAL(rc, 0);
-        check_out("stopped");
+        check_out_contains("stopped");
     }
 }
 
@@ -180,6 +179,7 @@ BOOST_FIXTURE_TEST_CASE(ctl__start_and_stop, CtlFixture) {
 BOOST_FIXTURE_TEST_CASE(ctl__status_all, CtlFixture) {
     auto client = make_client();
     const auto rc = client.execute_command("status", {});
+    BOOST_CHECK_EQUAL(err_str(), "");
     BOOST_CHECK_EQUAL(rc, 0);
-    check_out("testproc");
+    check_out_contains("testproc");
 }

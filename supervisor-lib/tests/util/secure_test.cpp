@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE SecureUtilTest
 #include <boost/test/unit_test.hpp>
-#include "../test_util.h"
 #include "util/secure.h"
+#include "util/test_util.h"
 #include <fstream>
 #include <unistd.h>
 #include <sys/stat.h>

@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE ParserRobustnessTest
 #include <boost/test/unit_test.hpp>
-#include "../test_util.h"
 #include "config/config_parser.h"
+#include "util/test_util.h"
 
 using namespace supervisorcpp::config;
 using test_util::msg_contains;

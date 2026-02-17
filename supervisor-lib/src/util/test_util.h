@@ -1,6 +1,12 @@
 #ifndef SUPERVISORCPP_TEST_UTIL_H
 #define SUPERVISORCPP_TEST_UTIL_H
 
+#ifndef BOOST_TEST_MODULE
+#   error Expected to be part of a unit test
+#endif // BOOST_TEST_MODULE
+
+#include "logger/logger.h"
+#include <boost/test/unit_test.hpp>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -8,6 +14,27 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+
+/// adjust test logging level, debug to ignore unless a debug arg is specified
+/// use ./TEST -- debug (./ctl_handler_test -- --debug)
+struct TestLoggingFixture {
+    TestLoggingFixture() {
+        using supervisorcpp::logger::LogLevel;
+        auto level = LogLevel::IGNORE;
+
+        const auto& suite = boost::unit_test::framework::master_test_suite();
+        for (int i = 1; i < suite.argc; ++i) {
+            if (suite.argv[i] == std::string_view{"--debug"}
+                || suite.argv[i] == std::string_view{"debug"}
+            ) {
+                level = LogLevel::TRACE;
+                break;
+            }
+        }
+        init_logging(level);
+    }
+};
+BOOST_GLOBAL_FIXTURE(TestLoggingFixture);
 
 namespace test_util {
 
@@ -17,6 +44,15 @@ namespace fs = std::filesystem;
 inline std::string read_file(const fs::path& path) {
     std::ifstream ifs{path, std::ios::binary};
     return {std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>()};
+}
+
+inline auto true_exe() {
+    static const std::string BIN_TRUE = std::filesystem::exists("/usr/bin/true") ? "/usr/bin/true" : "/bin/true";
+    return BIN_TRUE;
+}
+inline auto false_exe() {
+    static const std::string BIN_FALSE = std::filesystem::exists("/usr/bin/false") ? "/usr/bin/false" : "/bin/false";
+    return BIN_FALSE;
 }
 
 

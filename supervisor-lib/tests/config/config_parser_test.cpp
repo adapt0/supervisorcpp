@@ -1,6 +1,7 @@
 #define BOOST_TEST_MODULE ConfigParserTest
 #include <boost/test/unit_test.hpp>
 #include "config/config_parser.h"
+#include "util/test_util.h"
 #include <fstream>
 #include <filesystem>
 
@@ -263,8 +264,7 @@ BOOST_AUTO_TEST_CASE(TestUmaskParsing) {
 logfile=/var/log/supervisord.log
 umask=077
 [program:test]
-command=/bin/true
-)");
+command=)" + test_util::true_exe());
         BOOST_CHECK_EQUAL(config.supervisord.umask, 077);
     }
 
@@ -276,8 +276,7 @@ file=/run/supervisord.sock
 [supervisord]
 logfile=/var/log/supervisord.log
 [program:test]
-command=/bin/true
-)");
+command=)" + test_util::true_exe());
         BOOST_CHECK_EQUAL(config.supervisord.umask, 022);
     }
 
@@ -289,9 +288,8 @@ file=/run/supervisord.sock
 [supervisord]
 logfile=/var/log/supervisord.log
 [program:test]
-command=/bin/true
 umask=027
-)");
+command=)" + test_util::true_exe());
         BOOST_REQUIRE(config.programs[0].umask.has_value());
         BOOST_CHECK_EQUAL(*config.programs[0].umask, 027);
     }
@@ -304,8 +302,7 @@ file=/run/supervisord.sock
 [supervisord]
 logfile=/var/log/supervisord.log
 [program:test]
-command=/bin/true
-)");
+command=)" + test_util::true_exe());
         BOOST_CHECK(!config.programs[0].umask.has_value());
     }
 }

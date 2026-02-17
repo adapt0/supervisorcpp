@@ -67,8 +67,9 @@ public:
         (items_.emplace_back(std::move(args)), ...);
     }
 
-    Struct(Struct&&) = delete;
-    Struct& operator=(Struct&&) = delete;
+    Struct(Struct&&) = default;
+    Struct& operator=(Struct&&) = default;
+
     Struct(const Struct&) = delete;
     Struct& operator=(const Struct&) = delete;
 

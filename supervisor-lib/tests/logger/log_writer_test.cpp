@@ -1,7 +1,7 @@
 #define BOOST_TEST_MODULE LogWriterTest
 #include <boost/test/unit_test.hpp>
 #include "logger/log_writer.h"
-#include "../test_util.h"
+#include "util/test_util.h"
 #include <cassert>
 #include <fstream>
 #include <filesystem>

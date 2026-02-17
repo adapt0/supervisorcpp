@@ -65,7 +65,7 @@ void ProcessManager::stop_all() {
         int status;
         const pid_t pid = waitpid(-1, &status, WNOHANG);
         if (pid > 0) {
-            LOG_DEBUG << "Reaped child process " << pid << ", status=" << status;
+            LOG_DEBUG << "Reaped child process (PID: " << pid << ", status=" << status << ')';
             for (auto& process : processes_) {
                 if (process->pid() == pid) {
                     process->on_exit(status);

@@ -10,6 +10,7 @@ std::ostream& operator<<(std::ostream& os, LogLevel level) {
     case LogLevel::INFO: return os << "info";
     case LogLevel::WARN: return os << "warn";
     case LogLevel::ERROR: return os << "error";
+    case LogLevel::IGNORE: return os << "ignore";
     }
     return os << "unknown[" << static_cast<int>(level) << ']';
 }
@@ -21,6 +22,7 @@ LogLevel parse_log_level(std::string level_str) {
     if (level_str == "info") return LogLevel::INFO;
     if (level_str == "warn" || level_str == "warning") return LogLevel::WARN;
     if (level_str == "error") return LogLevel::ERROR;
+    if (level_str == "ignore") return LogLevel::IGNORE;
     throw std::invalid_argument("Invalid log level: " + level_str);
 }
 

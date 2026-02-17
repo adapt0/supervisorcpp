@@ -12,11 +12,11 @@
 
 #define BOOST_TEST_MODULE IntegrationTest
 #include <boost/test/unit_test.hpp>
-#include "../test_util.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
 #include "process/process_manager.h"
 #include "rpc/rpc_server.h"
+#include "util/test_util.h"
 #include <filesystem>
 #include <fstream>
 #include <chrono>
@@ -81,8 +81,6 @@ BOOST_AUTO_TEST_SUITE(IntegrationTests)
 
 // Test 1: Process that exits immediately (startsecs validation)
 BOOST_AUTO_TEST_CASE(ProcessExitsImmediately) {
-    const std::string BIN_TRUE = std::filesystem::exists("/usr/bin/true") ? "/usr/bin/true" : "/bin/true";
-
     const auto sock = TempManager::file("sock_1.sock");
     const auto log1 = TempManager::file("supervisord_1.log");
     const auto log2 = TempManager::file("exit_immediately.log");
@@ -95,7 +93,7 @@ file=)" + sock.str() + R"(
 logfile=)" + log1.str() + R"(
 
 [program:exit_immediately]
-command=)" + BIN_TRUE + R"(
+command=)" + test_util::true_exe() + R"(
 autorestart=false
 startsecs=1
 stdout_logfile=)" + log2.str() + "\n");
@@ -212,8 +210,6 @@ stdout_logfile=)" + log4.str() + "\n");
 
 // Test 4: Autorestart with failing process
 BOOST_AUTO_TEST_CASE(AutorestartFailingProcess) {
-    const std::string BIN_FALSE = std::filesystem::exists("/usr/bin/false") ? "/usr/bin/false" : "/bin/false";
-
     const auto sock = TempManager::file("sock_4.sock");
     const auto log1 = TempManager::file("supervisord_4.log");
     const auto log2 = TempManager::file("fail_fast.log");
@@ -226,7 +222,7 @@ file=)" + sock.str() + R"(
 logfile=)" + log1.str() + R"(
 
 [program:fail_fast]
-command=)" + BIN_FALSE + R"(
+command=)" + test_util::false_exe() + R"(
 autorestart=true
 startsecs=1
 startretries=3

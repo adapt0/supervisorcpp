@@ -31,12 +31,13 @@ static TrivialSeverity to_trivial_severity(LogLevel level) {
     case LogLevel::INFO: return TrivialSeverity::info;
     case LogLevel::WARN: return TrivialSeverity::warning;
     case LogLevel::ERROR: return TrivialSeverity::error;
+    case LogLevel::IGNORE: return TrivialSeverity::fatal;
     }
     return TrivialSeverity::info;
 }
 
 enum class LogDest {
-    BOTH, // sould be unused, lack of Dest implies both
+    BOTH, // should be unused, lack of Dest implies both
     CONSOLE,
     FILE,
 };
@@ -60,8 +61,16 @@ struct LogLevelSeverity {
     TrivialSeverity severity;
 };
 
-static LogLevelSeverity console_sev{LogLevel::INFO};
-static LogLevelSeverity file_sev{LogLevel::INFO};
+struct Logger {
+    static auto& instance() {
+        static Logger logger;
+        return logger;
+    }
+
+    LogLevelSeverity console_sev{LogLevel::INFO};
+    LogLevelSeverity file_sev{LogLevel::INFO};
+};
+
 
 } // anonymous namespace
 
@@ -76,10 +85,11 @@ void init_logging(LogLevel level) {
     );
 
     // Set filter level
-    console_sev.set(level);
+    auto& logger = Logger::instance();
+    logger.console_sev.set(level);
     log_console->set_filter(
         (!expr::has_attr(log_dest) || log_dest != LogDest::FILE)
-        && logging::trivial::severity >= boost::ref(console_sev.severity)
+        && logging::trivial::severity >= boost::ref(logger.console_sev.severity)
     );
 }
 
@@ -101,10 +111,11 @@ void init_file_logging(const std::filesystem::path& logfile,
     );
 
     // Set filter level
-    file_sev.set(level);
+    auto& logger = Logger::instance();
+    logger.file_sev.set(level);
     log_file->set_filter(
         (!expr::has_attr(log_dest) || log_dest != LogDest::CONSOLE)
-        && logging::trivial::severity >= boost::ref(file_sev.severity)
+        && logging::trivial::severity >= boost::ref(logger.file_sev.severity)
     );
 
     // Write delimiting header to file only
@@ -121,18 +132,18 @@ void shutdown_logging() {
 }
 
 LogLevel get_log_level() {
-    return console_sev.level;
+    return Logger::instance().console_sev.level;
 }
 
 void set_log_level(LogLevel level) {
-    if (console_sev.set(level)) {
+    if (Logger::instance().console_sev.set(level)) {
         LOG_TRACE << "Log level changed to: " << level;
     }
 }
 
 void increment_log_level(int amount) {
     const auto level = std::clamp(
-        static_cast<LogLevel>(static_cast<int>(console_sev.level) - amount),
+        static_cast<LogLevel>(static_cast<int>(get_log_level()) - amount),
         LogLevel::TRACE,
         LogLevel::ERROR
     );

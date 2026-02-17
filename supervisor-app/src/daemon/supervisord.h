@@ -5,7 +5,7 @@
 #include "daemon_state.h"
 #include "config/config_types.h"
 #include "process/process_manager.h"
-#include "rpc/rpc_server.h"
+#include "rpc/rpc_fwd.h"
 #include <atomic>
 #include <memory>
 
@@ -26,11 +26,11 @@ public:
 private:
     void register_rpc_handlers_();
 
-    boost::asio::io_context                 io_context_;
-    config::Configuration                   config_;
-    std::atomic<DaemonState>                daemon_state_{DaemonState::RUNNING};
-    process::ProcessManager                 process_manager_;
-    std::shared_ptr<rpc::RpcServer>         rpc_server_ptr_;
+    boost::asio::io_context   io_context_;
+    config::Configuration     config_;
+    std::atomic<DaemonState>  daemon_state_{DaemonState::RUNNING};
+    process::ProcessManager   process_manager_;
+    rpc::RpcServerPtr         rpc_server_ptr_;
 };
 
 } // namespace supervisorcpp

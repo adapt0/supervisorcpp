@@ -86,8 +86,6 @@ bool Process::start() {
         return false;
     }
 
-    LOG_DEBUG << *this << "Starting";
-
     const pid_t child_pid = spawn_();
     if (child_pid < 0) {
         LOG_ERROR << *this << "Failed to spawn process - " << spawn_error_;
@@ -273,6 +271,8 @@ int Process::get_uptime() const {
 
 pid_t Process::spawn_() {
     spawn_error_.clear();
+
+    LOG_DEBUG << *this << "spawn: \"" << config_.command << '"';
 
     // Create pipes for stdout/stderr if logging is configured
     // Use pipe2() with O_CLOEXEC for better security/robustness:
@@ -559,7 +559,7 @@ std::vector<std::string> Process::parse_command_() const {
 void Process::set_state_(State new_state) {
     if (new_state != state_) {
         if (pid_ > 0) {
-            LOG_INFO << *this << state_ << " -> " << new_state << " (pid: " << pid_ << ")";
+            LOG_INFO << *this << "(pid: " << pid_ << ") " << state_ << " -> " << new_state;
         } else {
             LOG_INFO << *this << state_ << " -> " << new_state;
         }

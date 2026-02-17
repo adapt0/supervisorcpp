@@ -2,7 +2,7 @@
 #include <boost/test/unit_test.hpp>
 #include "rpc/rpc_connection.h"
 #include "rpc/rpc_server.h"
-#include "../test_util.h"
+#include "util/test_util.h"
 #include <boost/asio.hpp>
 
 namespace rpc = supervisorcpp::rpc;

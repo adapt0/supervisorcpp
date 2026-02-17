@@ -15,6 +15,7 @@ enum class LogLevel {
     INFO,
     WARN,
     ERROR,
+    IGNORE, // ignore all errors (test default)
 };
 
 /**
