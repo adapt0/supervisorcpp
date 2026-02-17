@@ -1,28 +1,25 @@
-#include "args_parser.h"
-#include "version.h"
-#include "config/ini_reader.h"
+#pragma once
+#ifndef SUPERVISOR_APP__SUPERVISORCTL
+#define SUPERVISOR_APP__SUPERVISORCTL
+
 #include "logger/logger.h"
 #include "rpc/rpc_fwd.h"
 #include "rpc/xmlrpc.h"
 #include "util/string.h"
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 #include <boost/asio.hpp>
-#include <boost/program_options.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/trim.hpp>
 #include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/ini_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 
 namespace supervisorcpp {
 
 using ptree = boost::property_tree::ptree;
-using RpcParams = supervisorcpp::rpc::RpcParams;
 
 class XmlRpcError : public std::runtime_error {
 public:
@@ -42,6 +39,7 @@ private:
  */
 class SupervisorCtlClient {
 public:
+    using RpcParams = rpc::RpcParams;
     using CommandFunc = int (SupervisorCtlClient::*)(const RpcParams&);
 
     struct CommandInfo {
@@ -83,8 +81,10 @@ public:
         std::string description;
     };
 
-    explicit SupervisorCtlClient(const std::string& socket_path)
-    : socket_path_(socket_path)
+    explicit SupervisorCtlClient(const std::string& socket_path,
+                                 std::ostream& out = std::cout,
+                                 std::ostream& err = std::cerr)
+    : socket_path_(socket_path), out_(out), err_(err)
     { }
 
     ~SupervisorCtlClient() = default;
@@ -99,7 +99,7 @@ public:
      */
     void interactive_mode() {
         while (true) {
-            std::cout << "supervisor> ";
+            out_ << "supervisor> ";
 
             std::string line;
             if (!std::getline(std::cin, line)) break;
@@ -123,7 +123,7 @@ public:
                 break; // Exit requested
             }
         }
-        std::cout << std::endl;
+        out_ << std::endl;
     }
 
     /**
@@ -139,24 +139,24 @@ public:
                 }
             }
 
-            std::cerr << "Error: unknown command '" << method << "'\n";
-            std::cerr << "Use 'help' for available commands\n";
+            err_ << "Error: unknown command '" << method << "'\n";
+            err_ << "Use 'help' for available commands\n";
             return 1;
 
         } catch (const std::exception& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
+            err_ << "Error: " << e.what() << std::endl;
             return 1;
         }
     }
 
     int cmdHelp(const RpcParams&) {
-        std::cout << "Commands:\n";
+        out_ << "Commands:\n";
         for (const auto& cmd : commands_) {
             if (cmd.desc.empty()) continue;
 
             auto w = cmd.method.size() + cmd.desc_args.size();
             if (w < 22) w = 22 - cmd.method.size() - 1;
-            std::cout << "  " << cmd.method
+            out_ << "  " << cmd.method
                 << ' ' << std::left << std::setw(w) << cmd.desc_args
                 << cmd.desc
                 << '\n'
@@ -171,21 +171,21 @@ private:
     }
 
     int cmdReload_(const RpcParams&) {
-        std::cout << "Restarting supervisord..." << std::endl;
+        out_ << "Restarting supervisord..." << std::endl;
         call_method_("supervisor.shutdown");
         return 0;
     }
 
     int cmdRestart_(const RpcParams& args) {
         if (args.size() < 1) {
-            std::cerr << "Error: process name required" << std::endl;
+            err_ << "Error: process name required" << std::endl;
             return 1;
         }
 
         if (args[0] == "all") {
             call_method_("supervisor.stopAllProcesses");
             call_method_("supervisor.startAllProcesses");
-            std::cout << "All processes restarted" << std::endl;
+            out_ << "All processes restarted" << std::endl;
         } else {
             // Stop first, but tolerate NOT_RUNNING (process may already be stopped)
             try {
@@ -194,45 +194,45 @@ private:
                 if (e.code() != "NOT_RUNNING") throw;
             }
             call_method_("supervisor.startProcess", {args[0]});
-            std::cout << args[0] << ": restarted" << std::endl;
+            out_ << args[0] << ": restarted" << std::endl;
         }
         return 0;
     }
 
     int cmdShutdown_(const RpcParams&) {
-        std::cout << "Shutting down supervisord" << std::endl;
+        out_ << "Shutting down supervisord" << std::endl;
         call_method_("supervisor.shutdown");
         return 0;
     }
 
     int cmdStart_(const RpcParams& args) {
         if (args.size() < 1) {
-            std::cerr << "Error: process name required" << std::endl;
+            err_ << "Error: process name required" << std::endl;
             return 1;
         }
 
         if (args[0] == "all") {
             call_method_("supervisor.startAllProcesses");
-            std::cout << "All processes started" << std::endl;
+            out_ << "All processes started" << std::endl;
         } else {
             call_method_("supervisor.startProcess", { args[0] });
-            std::cout << args[0] << ": started" << std::endl;
+            out_ << args[0] << ": started" << std::endl;
         }
         return 0;
     }
 
     int cmdStop_(const RpcParams& args) {
         if (args.size() < 1) {
-            std::cerr << "Error: process name required" << std::endl;
+            err_ << "Error: process name required" << std::endl;
             return 1;
         }
 
         if (args[0] == "all") {
             call_method_("supervisor.stopAllProcesses");
-            std::cout << "All processes stopped" << std::endl;
+            out_ << "All processes stopped" << std::endl;
         } else {
             call_method_("supervisor.stopProcess", { args[0] });
-            std::cout << args[0] << ": stopped" << std::endl;
+            out_ << args[0] << ": stopped" << std::endl;
         }
         return 0;
     }
@@ -350,13 +350,13 @@ private:
     /**
      * Format process info for display (supervisord-compatible format)
      */
-    static void print_process_info_(const std::vector<ProcessInfo>& processes) {
+    void print_process_info_(const std::vector<ProcessInfo>& processes) {
         for (const auto& info : processes) {
             print_process_info_(info);
         }
     }
-    static void print_process_info_(const ProcessInfo& info) {
-        std::cout << std::left << std::setw(20) << info.name
+    void print_process_info_(const ProcessInfo& info) {
+        out_ << std::left << std::setw(20) << info.name
                 << std::setw(15) << info.statename
                 << info.description << std::endl;
     }
@@ -454,87 +454,11 @@ private:
     }
 
     std::string socket_path_;
+    std::ostream& out_;
+    std::ostream& err_;
     boost::asio::io_context io_context_;
 };
 
 } // namespace supervisorcpp
 
-using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
-
-
-int supervisorctl_main(int argc, char* argv[]) {
-    try {
-        namespace po = boost::program_options;
-
-        auto parsed_opt = supervisorcpp::parse_args(
-            argc, argv,
-            "supervisorctl - control supervisord processes",
-            [](auto& parser, auto& desc) {
-                (void)parser;
-                desc.add_options()
-                    ("serverurl,s", po::value<std::string>(), "Server URL (e.g. unix:///run/supervisord.sock)")
-                ;
-            },
-            [] {
-                SupervisorCtlClient{""}.cmdHelp(supervisorcpp::RpcParams{});
-                std::cout << "\nUsage:\n";
-                std::cout << "  supervisorctl status           # Show all process status\n";
-                std::cout << "  supervisorctl start myapp      # Start a specific process\n";
-                std::cout << "  supervisorctl                  # Interactive mode\n";
-            }
-        );
-        if (!parsed_opt) return 0;
-        auto& [ vm, args ] = *parsed_opt;
-
-        // Resolve server URL: CLI arg > config file > default
-        const auto serverurl = [&vm]() -> std::string {
-            if (vm.count("serverurl")) return vm["serverurl"].as<std::string>();
-
-            try {
-                // Lightweight read of just [supervisorctl] from config
-                std::ifstream file(vm["configuration"].as<std::string>());
-                supervisorcpp::config::CommentStrippingBuf filtered(file);
-                std::istream filtered_stream(&filtered);
-                boost::property_tree::ptree tree;
-                boost::property_tree::ini_parser::read_ini(filtered_stream, tree);
-                return tree.get<std::string>("supervisorctl.serverurl", "unix:///run/supervisord.sock");
-            } catch (const std::exception& e) {
-                std::cerr << "Warning: Could not load config: " << e.what() << std::endl;
-                return "unix:///run/supervisord.sock";
-            }
-        }();
-
-        // Extract socket path from serverurl
-        std::string socket_path;
-        if (serverurl.starts_with("unix://")) {
-            socket_path = serverurl.substr(7);
-        } else if (serverurl.starts_with("/")) {
-            socket_path = serverurl;
-        } else {
-            std::cerr << "Error: '" << serverurl << "' is not a valid server URL;"
-                      << " use a unix:// URL or a socket path" << std::endl;
-            return 1;
-        }
-        LOG_DEBUG << "Using socket: " << socket_path;
-
-        // Create client
-        SupervisorCtlClient client{socket_path};
-
-        // Get remaining arguments as command
-        if (args.empty()) {
-            // No command specified, enter interactive mode
-            client.interactive_mode();
-        } else {
-            // Execute single command and exit
-            const auto method = args.front();
-            args.erase(std::begin(args));
-            return client.execute_command(method, args);
-        }
-
-        return 0;
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
-    }
-}
+#endif // SUPERVISOR_APP__SUPERVISORCTL

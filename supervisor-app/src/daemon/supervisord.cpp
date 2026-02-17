@@ -1,5 +1,6 @@
 #include "supervisord.h"
 #include "args_parser.h"
+#include "rpc_handlers.h"
 #include "version.h"
 #include "config/config_parser.h"
 #include "logger/logger.h"
@@ -62,64 +63,16 @@ void Supervisord::register_rpc_handlers_() {
     using rpc::RpcParams;
     using namespace xmlrpc;
 
+    // Process management handlers (shared with tests)
+    register_process_handlers(*rpc_server_ptr_, process_manager_);
+
+    // Daemon-specific handlers
     rpc_server_ptr_->register_handler("supervisor.getState", [this](const RpcParams&) {
         const auto state = daemon_state_.load();
         return Struct{
             Member{"statecode", static_cast<int>(state)},
             Member{"statename", daemon_state_name(state)},
         }.str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.getAllProcessInfo", [this](const RpcParams&) {
-        return wrap( process_manager_.get_all_process_info() ).str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.getProcessInfo", [this](const RpcParams& params) {
-        if (params.empty()) throw std::runtime_error("Process name required");
-        const auto* proc = process_manager_.get_process(params[0]);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + params[0]);
-
-        return wrap( proc->get_info() ).str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.startProcess", [this](const RpcParams& params) {
-        if (params.empty()) throw std::runtime_error("Process name required");
-        const auto& name = params[0];
-        const auto* proc = process_manager_.get_process(name);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
-        const auto st = proc->state();
-        if (st == process::State::RUNNING || st == process::State::STARTING) {
-            throw std::runtime_error("ALREADY_STARTED: " + name);
-        }
-        if (!process_manager_.start_process(name)) {
-            throw std::runtime_error("SPAWN_ERROR: " + name);
-        }
-        return Value{true}.str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.stopProcess", [this](const RpcParams& params) {
-        if (params.empty()) throw std::runtime_error("Process name required");
-        const auto& name = params[0];
-        const auto* proc = process_manager_.get_process(name);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
-        const auto st = proc->state();
-        if (st == process::State::STOPPED || st == process::State::EXITED || st == process::State::FATAL) {
-            throw std::runtime_error("NOT_RUNNING: " + name);
-        }
-        if (!process_manager_.stop_process(name)) {
-            throw std::runtime_error("NOT_RUNNING: " + name);
-        }
-        return Value{true}.str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.startAllProcesses", [this](const RpcParams&) {
-        process_manager_.start_all();
-        return wrap( process_manager_.get_all_process_info() ).str();
-    });
-
-    rpc_server_ptr_->register_handler("supervisor.stopAllProcesses", [this](const RpcParams&) {
-        process_manager_.stop_all();
-        return wrap( process_manager_.get_all_process_info() ).str();
     });
 
     rpc_server_ptr_->register_handler("supervisor.shutdown", [this](const RpcParams&) {

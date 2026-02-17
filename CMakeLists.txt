@@ -70,8 +70,8 @@ add_custom_target(git_version ALL
 add_executable(supervisor
     supervisor-app/src/args_parser.cpp
     supervisor-app/src/main.cpp
-    supervisor-app/src/supervisord.cpp
-    supervisor-app/src/supervisorctl.cpp
+    supervisor-app/src/daemon/supervisord.cpp
+    supervisor-app/src/ctl/supervisorctl.cpp
 )
 target_link_libraries(supervisor PRIVATE supervisor_lib)
 target_include_directories(supervisor PRIVATE
@@ -134,6 +134,9 @@ add_lib_test(util_secure_test         supervisor-lib/tests/util/secure_test.cpp)
 add_lib_test(log_writer_test          supervisor-lib/tests/logger/log_writer_test.cpp)
 add_lib_test(rpc_dispatch_test        supervisor-lib/tests/rpc/rpc_dispatch_test.cpp)
 add_lib_test(rpc_connection_test      supervisor-lib/tests/rpc/rpc_connection_test.cpp)
+
+# App tests
+add_app_test(ctl_handler_test         supervisor-app/tests/ctl_handler_test.cpp)
 
 # Install targets
 install(TARGETS supervisor

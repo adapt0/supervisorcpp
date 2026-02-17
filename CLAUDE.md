@@ -14,32 +14,42 @@ Prefer **Ninja** over Make — it's faster and already available in the build en
 ## Code Organization
 
 ```
-supervisor-lib/           # Static library (supervisord_lib)
-  config/                 # INI config parsing, types, validation
-  process/                # Process lifecycle, manager, log writer, child setup
-  rpc/                    # XML-RPC server, socket utilities
-  util/                   # Logger, error types, path utilities
+supervisor-lib/
+  src/                    # Static library (supervisor_lib)
+    config/               # INI config parsing, types, validation
+    process/              # Process lifecycle, manager, log writer, child setup
+    rpc/                  # XML-RPC server, socket utilities
+    util/                 # Logger, error types, path utilities
+  tests/                  # Library tests
+    config/               # Config parser unit + robustness tests
+    rpc/                  # XML-RPC, dispatch, connection tests
+    util/                 # String + security utility tests
+    logger/               # LogWriter tests
+    integration/          # Full lifecycle integration tests
+    data/                 # Test .ini config files
 
-supervisor-app/           # Busybox-style multi-call binary
-  main.cpp                # Dispatches by argv[0]: supervisord (default) or supervisorctl
-  supervisord.cpp         # Daemon entry point
-  supervisorctl.cpp       # CLI client entry point
-
-tests/
-  config/                 # Config parser unit + robustness tests
-  rpc/                    # XML-RPC, dispatch, connection tests
-  util/                   # String + security utility tests
-  logger/                 # LogWriter tests
-  integration/            # Full lifecycle integration tests
-  data/                   # Test .ini config files
+supervisor-app/
+  src/
+    main.cpp              # Dispatches by argv[0]: supervisord (default) or supervisorctl
+    args_parser.cpp/.h    # Shared CLI argument parsing
+    daemon/               # Daemon (supervisord)
+      supervisord.cpp/.h  # Daemon entry point + class
+      daemon_state.h      # Daemon state enum
+      rpc_handlers.h      # Shared process RPC handler registration
+    ctl/                  # Controller client (supervisorctl)
+      supervisorctl.cpp   # CLI client entry point
+      supervisorctl.h     # SupervisorCtlClient class + XmlRpcError
+  tests/                  # App-level tests
+    ctl_handler_test.cpp  # Supervisorctl interaction tests over real socket
 ```
 
 ## Testing
 
 - **Quality over quantity** — prefer consolidated, easy-to-maintain tests over many boilerplate-heavy ones. A single well-structured test that writes, reads back, checks size, and flushes is better than four separate tests with duplicated setup.
 - **Boost.Test** framework with `BOOST_AUTO_TEST_CASE` / `BOOST_FIXTURE_TEST_CASE`
-- New tests: one `add_unit_test()` call in CMakeLists.txt (single source file per executable)
-- Integration tests start a real supervisord instance — they need test configs in `tests/data/`
+- Lib tests: `add_lib_test()` in CMakeLists.txt (single source file per executable)
+- App tests: `add_app_test()` — also gets app include path for `supervisorctl.h` etc.
+- Integration tests start a real supervisord instance — they need test configs in `supervisor-lib/tests/data/`
 
 ## Key Conventions
 
