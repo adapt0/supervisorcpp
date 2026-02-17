@@ -2,14 +2,14 @@
 #ifndef SUPERVISOR_LIB__PROCESS__PROCESS
 #define SUPERVISOR_LIB__PROCESS__PROCESS
 
-#include "../config/config_types.h"
-#include <boost/asio.hpp>
-#include <sys/types.h>
+#include "config/config_types.h"
+#include <array>
 #include <chrono>
 #include <memory>
-#include <string>
 #include <optional>
-#include <array>
+#include <string>
+#include <sys/types.h>
+#include <boost/asio.hpp>
 
 namespace supervisorcpp::logger {
     class LogWriter;

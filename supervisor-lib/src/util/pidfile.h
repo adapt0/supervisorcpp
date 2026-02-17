@@ -2,8 +2,8 @@
 #ifndef SUPERVISOR_LIB__UTIL__PIDFILE
 #define SUPERVISOR_LIB__UTIL__PIDFILE
 
-#include "../logger/logger.h"
 #include "secure.h"
+#include "logger/logger.h"
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>

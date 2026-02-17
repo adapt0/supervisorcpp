@@ -4,8 +4,8 @@
 
 #include <filesystem>
 #include <fstream>
-#include <string>
 #include <mutex>
+#include <string>
 
 namespace supervisorcpp::logger {
 

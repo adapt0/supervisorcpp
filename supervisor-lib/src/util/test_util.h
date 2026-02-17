@@ -6,7 +6,6 @@
 #endif // BOOST_TEST_MODULE
 
 #include "logger/logger.h"
-#include <boost/test/unit_test.hpp>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -14,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <sys/stat.h>
+#include <boost/test/unit_test.hpp>
 
 /// adjust test logging level, debug to ignore unless a debug arg is specified
 /// use ./TEST -- debug (./ctl_handler_test -- --debug)

@@ -4,9 +4,9 @@
 
 #include "config_types.h"
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <stdexcept>
 
 namespace supervisorcpp::config {
 

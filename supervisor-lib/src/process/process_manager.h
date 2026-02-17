@@ -3,12 +3,12 @@
 #define SUPERVISOR_LIB__PROCESS__PROCESS_MANAGER
 
 #include "process.h"
-#include "../config/config_types.h"
-#include <boost/asio.hpp>
-#include <memory>
-#include <vector>
+#include "config/config_types.h"
 #include <map>
+#include <memory>
 #include <string>
+#include <vector>
+#include <boost/asio.hpp>
 
 namespace supervisorcpp::process {
 

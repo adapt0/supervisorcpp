@@ -1,6 +1,6 @@
 #include "xmlrpc.h"
-#include "../process/process.h"
-#include "../util/string.h"
+#include "process/process.h"
+#include "util/string.h"
 #include <sstream>
 #include <boost/lexical_cast.hpp>
 

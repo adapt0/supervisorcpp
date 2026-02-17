@@ -1,7 +1,7 @@
 #include "rpc_server.h"
 #include "rpc_connection.h"
-#include "../logger/logger.h"
-#include "../util/secure.h"
+#include "logger/logger.h"
+#include "util/secure.h"
 #include <filesystem>
 
 namespace supervisorcpp::rpc {

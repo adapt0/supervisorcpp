@@ -5,8 +5,8 @@
 #include <charconv>
 #include <stdexcept>
 #include <type_traits>
-#include <boost/property_tree/ptree.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
+#include <boost/property_tree/ptree.hpp>
 
 namespace supervisorcpp::config {
 

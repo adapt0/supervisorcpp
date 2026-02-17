@@ -1,9 +1,9 @@
 #include "process_manager.h"
-#include "../logger/logger.h"
-#include <sys/types.h>
-#include <sys/wait.h>
+#include "logger/logger.h"
 #include <algorithm>
 #include <thread>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 namespace supervisorcpp::process {
 

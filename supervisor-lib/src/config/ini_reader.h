@@ -2,8 +2,8 @@
 #ifndef SUPERVISOR_LIB__CONFIG__INI_READER
 #define SUPERVISOR_LIB__CONFIG__INI_READER
 
-#include <streambuf>
 #include <istream>
+#include <streambuf>
 #include <string>
 
 namespace supervisorcpp::config {

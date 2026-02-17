@@ -1,9 +1,9 @@
 #include "config_parser.h"
 #include "ini_reader.h"
 #include "ptree_ext.h"
-#include "../logger/logger.h"
-#include "../util/secure.h"
-#include "../util/string.h"
+#include "logger/logger.h"
+#include "util/secure.h"
+#include "util/string.h"
 #include <algorithm>
 #include <regex>
 #include <sstream>

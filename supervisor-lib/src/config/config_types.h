@@ -2,7 +2,7 @@
 #ifndef SUPERVISOR_LIB__PROCESS__CONFIG_TYPES
 #define SUPERVISOR_LIB__PROCESS__CONFIG_TYPES
 
-#include "../logger/logger.h"
+#include "logger/logger.h"
 #include <map>
 #include <optional>
 #include <set>

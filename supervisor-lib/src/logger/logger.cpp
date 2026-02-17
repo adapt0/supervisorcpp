@@ -5,10 +5,10 @@
 #include <boost/log/attributes/scoped_attribute.hpp>
 #include <boost/log/sinks/text_file_backend.hpp>
 #include <boost/log/sinks/text_ostream_backend.hpp>
-#include <boost/log/utility/setup/file.hpp>
+#include <boost/log/support/date_time.hpp>
 #include <boost/log/utility/setup/common_attributes.hpp>
 #include <boost/log/utility/setup/console.hpp>
-#include <boost/log/support/date_time.hpp>
+#include <boost/log/utility/setup/file.hpp>
 
 namespace supervisorcpp::logger {
 

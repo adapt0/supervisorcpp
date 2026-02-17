@@ -1,8 +1,8 @@
 #include "process.h"
-#include "../logger/log_writer.h"
-#include "../logger/logger.h"
-#include "../util/platform.h"
-#include "../util/secure.h"
+#include "logger/log_writer.h"
+#include "logger/logger.h"
+#include "util/platform.h"
+#include "util/secure.h"
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
