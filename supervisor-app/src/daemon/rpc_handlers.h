@@ -36,6 +36,7 @@ inline void register_process_handlers(rpc::RpcServer& server, process::ProcessMa
         if (st == process::State::RUNNING || st == process::State::STARTING) {
             throw std::runtime_error("ALREADY_STARTED: " + name);
         }
+        LOG_INFO << "RPC: start '" << name << "'";
         if (!pm.start_process(name)) {
             throw std::runtime_error("SPAWN_ERROR: " + name);
         }
@@ -51,6 +52,7 @@ inline void register_process_handlers(rpc::RpcServer& server, process::ProcessMa
         if (st == process::State::STOPPED || st == process::State::EXITED || st == process::State::FATAL) {
             throw std::runtime_error("NOT_RUNNING: " + name);
         }
+        LOG_INFO << "RPC: stop '" << name << "'";
         if (!pm.stop_process(name)) {
             throw std::runtime_error("NOT_RUNNING: " + name);
         }
@@ -58,11 +60,13 @@ inline void register_process_handlers(rpc::RpcServer& server, process::ProcessMa
     });
 
     server.register_handler("supervisor.startAllProcesses", [&pm](const RpcParams&) {
+        LOG_INFO << "RPC: start all";
         pm.start_all();
         return wrap(pm.get_all_process_info()).str();
     });
 
     server.register_handler("supervisor.stopAllProcesses", [&pm](const RpcParams&) {
+        LOG_INFO << "RPC: stop all";
         pm.stop_all();
         return wrap(pm.get_all_process_info()).str();
     });

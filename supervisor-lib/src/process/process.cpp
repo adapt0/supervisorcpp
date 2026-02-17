@@ -107,7 +107,6 @@ bool Process::start() {
     start_time_ = std::chrono::steady_clock::now();
     set_state_(State::STARTING);
 
-    LOG_INFO << *this << "Started with pid " << pid_;
     return true;
 }
 
@@ -559,7 +558,11 @@ std::vector<std::string> Process::parse_command_() const {
 
 void Process::set_state_(State new_state) {
     if (new_state != state_) {
-        LOG_INFO << *this << state_ << " -> " << new_state;
+        if (pid_ > 0) {
+            LOG_INFO << *this << state_ << " -> " << new_state << " (pid: " << pid_ << ")";
+        } else {
+            LOG_INFO << *this << state_ << " -> " << new_state;
+        }
         state_ = new_state;
         state_change_time_ = std::chrono::steady_clock::now();
     }

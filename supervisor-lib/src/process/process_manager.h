@@ -55,12 +55,6 @@ public:
     bool stop_process(const std::string& name);
 
     /**
-     * Restart a specific process by name
-     * @return true if restarted successfully
-     */
-    bool restart_process(const std::string& name);
-
-    /**
      * Get process by name
      */
     const Process* get_process(const std::string& name) const;

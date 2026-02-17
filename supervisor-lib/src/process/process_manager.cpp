@@ -57,7 +57,7 @@ void ProcessManager::stop_all() {
     }
 
     if (0 == signaled) return;
-    LOG_INFO << "Stopping " << signaled << " processe(s)";
+    LOG_INFO << "Stopping " << signaled << " processes";
 
     // Actively reap children instead of blocking sleep
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
@@ -73,7 +73,7 @@ void ProcessManager::stop_all() {
                 }
             }
         } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            io_context_.run_for(std::chrono::milliseconds(10));
         }
     }
 
@@ -103,34 +103,22 @@ bool ProcessManager::stop_process(const std::string& name) {
         return false;
     }
 
-    return it->second->stop();
-}
-
-bool ProcessManager::restart_process(const std::string& name) {
-    const auto it = process_map_.find(name);
-    if (std::end(process_map_) == it) {
-        LOG_ERROR << "Process '" << name << "' not found";
-        return false;
-    }
     auto* proc = it->second;
+    if (!proc->stop()) return false;
 
-    if (proc->pid() > 0) {
-        if (!proc->stop()) return false;
-
-        // Actively reap until stopped or timeout
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
-        while (proc->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
-            int status;
-            pid_t pid = waitpid(proc->pid(), &status, WNOHANG);
-            if (pid > 0) {
-                proc->on_exit(status);
-            } else {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
+    // Wait for process to actually exit (reap it synchronously)
+    const auto deadline = std::chrono::steady_clock::now()
+        + std::chrono::seconds(proc->config().stopwaitsecs + 1);
+    while (proc->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
+        int status;
+        const pid_t pid = waitpid(proc->pid(), &status, WNOHANG);
+        if (pid > 0) {
+            proc->on_exit(status);
+        } else {
+            io_context_.run_for(std::chrono::milliseconds(10));
         }
     }
-
-    return proc->start();
+    return true;
 }
 
 const Process* ProcessManager::get_process(const std::string& name) const {
