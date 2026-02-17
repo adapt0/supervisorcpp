@@ -2,6 +2,7 @@
 #include "rpc_connection.h"
 #include "../logger/logger.h"
 #include "../util/secure.h"
+#include <filesystem>
 
 namespace supervisorcpp::rpc {
 
@@ -33,7 +34,16 @@ void RpcServer::start() {
     // SECURITY: Validate socket directory before creating socket
     util::validate_socket_directory(socket_path_);
 
-    // Remove existing socket file if it exists
+    // Check if another supervisord is already listening on this socket
+    if (std::filesystem::exists(socket_path_)) {
+        boost::asio::local::stream_protocol::socket probe(io_context_);
+        boost::system::error_code ec;
+        probe.connect(boost::asio::local::stream_protocol::endpoint(socket_path_), ec);
+        if (!ec) throw std::runtime_error("Another supervisord is already running? (socket " + socket_path_ + " is active)");
+
+        LOG_INFO << "Removing stale socket " << socket_path_;
+    }
+
     ::unlink(socket_path_.c_str());
 
     // Create endpoint

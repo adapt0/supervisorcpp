@@ -46,18 +46,18 @@ void ProcessManager::start_all() {
 
 void ProcessManager::stop_all() {
     if (processes_.empty()) return;
-    LOG_INFO << "Stopping all processes";
 
     // Send stop signal to all processes with active PIDs (RUNNING, STARTING, etc.)
-    bool any_signaled = false;
+    int signaled = 0;
     for (auto& process : processes_) {
         if (process->pid() > 0) {
             process->stop();
-            any_signaled = true;
+            signaled++;
         }
     }
 
-    if (!any_signaled) return;
+    if (0 == signaled) return;
+    LOG_INFO << "Stopping " << signaled << " processe(s)";
 
     // Actively reap children instead of blocking sleep
     auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);

@@ -5,7 +5,6 @@
 #include "logger/logger.h"
 #include "rpc/xmlrpc.h"
 #include "util/pidfile.h"
-#include <iostream>
 #include <csignal>
 #include <boost/program_options.hpp>
 
@@ -198,10 +197,10 @@ int supervisord_main(int argc, char* argv[]) {
         return rc;
 
     } catch (const config::ConfigParseError& e) {
-        std::cerr << "Configuration error: " << e.what() << std::endl;
+        LOG_ERROR << "Configuration error: " << e.what();
         return 1;
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        LOG_ERROR << "Error: " << e.what();
         return 1;
     }
 }
