@@ -163,21 +163,21 @@ BOOST_AUTO_TEST_CASE(ValidFileSizeSuffixes) {
 command=/bin/echo
 stdout_logfile_maxbytes=1KB
 )");
-    BOOST_CHECK_EQUAL(config1.programs[0].stdout_logfile_maxbytes, 1024);
+    BOOST_CHECK_EQUAL(config1.programs[0].stdout_log.file_maxbytes, 1024);
 
     const auto config2 = ConfigParser::parse_string(R"(
 [program:test]
 command=/bin/echo
 stdout_logfile_maxbytes=2MB
 )");
-    BOOST_CHECK_EQUAL(config2.programs[0].stdout_logfile_maxbytes, 2 * 1024 * 1024);
+    BOOST_CHECK_EQUAL(config2.programs[0].stdout_log.file_maxbytes, 2 * 1024 * 1024);
 
     const auto config3 = ConfigParser::parse_string(R"(
 [program:test]
 command=/bin/echo
 stdout_logfile_maxbytes=1GB
 )");
-    BOOST_CHECK_EQUAL(config3.programs[0].stdout_logfile_maxbytes, 1024ULL * 1024 * 1024);
+    BOOST_CHECK_EQUAL(config3.programs[0].stdout_log.file_maxbytes, 1024ULL * 1024 * 1024);
 }
 
 // Test 15: Invalid signal names
@@ -270,7 +270,7 @@ stdout_logfile=/var/log/%(program_name)s.log
 )");
 
     BOOST_CHECK_EQUAL(config.programs[0].command, "/bin/echo test_prog");
-    BOOST_CHECK_EQUAL(config.programs[0].stdout_logfile->string(), std::filesystem::weakly_canonical("/var/log/test_prog.log"));
+    BOOST_CHECK_EQUAL(config.programs[0].stdout_log.file->string(), std::filesystem::weakly_canonical("/var/log/test_prog.log"));
 }
 
 // Test 21: Unknown variable in substitution

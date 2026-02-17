@@ -108,10 +108,10 @@ stopsignal=INT
     BOOST_CHECK_EQUAL(prog.user, "root");
 
     // Check variable substitution
-    BOOST_CHECK_EQUAL(prog.stdout_logfile.value(), std::filesystem::weakly_canonical("/var/log/my_app.log"));
+    BOOST_CHECK_EQUAL(prog.stdout_log.file.value(), std::filesystem::weakly_canonical("/var/log/my_app.log"));
 
     // Check size parsing
-    BOOST_CHECK_EQUAL(prog.stdout_logfile_maxbytes, 10 * 1024 * 1024);
+    BOOST_CHECK_EQUAL(prog.stdout_log.file_maxbytes, 10 * 1024 * 1024);
 
     BOOST_CHECK_EQUAL(prog.redirect_stderr, true);
     BOOST_CHECK_EQUAL(prog.startsecs, 5);
@@ -251,7 +251,62 @@ BOOST_AUTO_TEST_CASE(TestParseActualFile) {
         BOOST_CHECK_EQUAL(prog.command, "/bin/echo test_app");
         BOOST_CHECK_EQUAL(prog.environment.at("FOO"), "bar");
         BOOST_CHECK_EQUAL(prog.environment.at("BAZ"), "qux");
-        BOOST_CHECK_EQUAL(prog.stdout_logfile.value(), std::filesystem::weakly_canonical("/tmp/test_app.log"));
+        BOOST_CHECK_EQUAL(prog.stdout_log.file.value(), std::filesystem::weakly_canonical("/tmp/test_app.log"));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(TestUmaskParsing) {
+    // Daemon-level umask
+    {
+        const auto config = ConfigParser::parse_string(R"(
+[supervisord]
+logfile=/var/log/supervisord.log
+umask=077
+[program:test]
+command=/bin/true
+)");
+        BOOST_CHECK_EQUAL(config.supervisord.umask, 077);
+    }
+
+    // Default umask (022) when not specified
+    {
+        const auto config = ConfigParser::parse_string(R"(
+[unix_http_server]
+file=/run/supervisord.sock
+[supervisord]
+logfile=/var/log/supervisord.log
+[program:test]
+command=/bin/true
+)");
+        BOOST_CHECK_EQUAL(config.supervisord.umask, 022);
+    }
+
+    // Per-process umask
+    {
+        const auto config = ConfigParser::parse_string(R"(
+[unix_http_server]
+file=/run/supervisord.sock
+[supervisord]
+logfile=/var/log/supervisord.log
+[program:test]
+command=/bin/true
+umask=027
+)");
+        BOOST_REQUIRE(config.programs[0].umask.has_value());
+        BOOST_CHECK_EQUAL(*config.programs[0].umask, 027);
+    }
+
+    // Per-process umask not set
+    {
+        const auto config = ConfigParser::parse_string(R"(
+[unix_http_server]
+file=/run/supervisord.sock
+[supervisord]
+logfile=/var/log/supervisord.log
+[program:test]
+command=/bin/true
+)");
+        BOOST_CHECK(!config.programs[0].umask.has_value());
     }
 }
 

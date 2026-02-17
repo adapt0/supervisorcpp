@@ -101,6 +101,7 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
         pt_get(section, "logfile_backups",  config.supervisord.logfile_backups);
         pt_get(section, "loglevel",         config.supervisord.loglevel, parse_config(logger::parse_log_level, "[supervisord] loglevel"));
         pt_get(section, "pidfile",          config.supervisord.pidfile);
+        pt_get(section, "umask",            config.supervisord.umask, [](const std::string& s) -> mode_t { return static_cast<mode_t>(std::stoul(s, nullptr, 8)); });
         pt_get(section, "user",             config.supervisord.user);
     }
 
@@ -147,10 +148,15 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
             pt_get(value, "redirect_stderr", prog.redirect_stderr);
             pt_get(value, "startretries",    prog.startretries);
             pt_get(value, "startsecs",       prog.startsecs);
-            pt_get(value, "stdout_logfile",  prog.stdout_logfile, [&prog](const std::string& s) -> fs::path { return prog.substitute_variables(s); });
-            pt_get(value, "stdout_logfile_maxbytes", prog.stdout_logfile_maxbytes, parse_config(parse_size, "Program [" + key + "] stdout_logfile_maxbytes"));
+            pt_get(value, "stderr_logfile",  prog.stderr_log.file, [&prog](const std::string& s) -> fs::path { return prog.substitute_variables(s); });
+            pt_get(value, "stderr_logfile_maxbytes", prog.stderr_log.file_maxbytes, parse_config(parse_size, "Program [" + key + "] stderr_logfile_maxbytes"));
+            pt_get(value, "stderr_logfile_backups",  prog.stderr_log.file_backups);
+            pt_get(value, "stdout_logfile",  prog.stdout_log.file, [&prog](const std::string& s) -> fs::path { return prog.substitute_variables(s); });
+            pt_get(value, "stdout_logfile_maxbytes", prog.stdout_log.file_maxbytes, parse_config(parse_size, "Program [" + key + "] stdout_logfile_maxbytes"));
+            pt_get(value, "stdout_logfile_backups",  prog.stdout_log.file_backups);
             pt_get(value, "stopsignal",      prog.stopsignal, parse_config(util::validate_signal, "Program [" + key + "] stopsignal"));
             pt_get(value, "stopwaitsecs",    prog.stopwaitsecs);
+            pt_get(value, "umask",           prog.umask, [](const std::string& s) -> mode_t { return static_cast<mode_t>(std::stoul(s, nullptr, 8)); });
             pt_get(value, "user",            prog.user);
 
             // Apply variable substitution to command
@@ -164,12 +170,18 @@ void ConfigParser::parse_stream_(std::istream& is, Configuration& config, const 
             }
 
             // SECURITY: Validate log file paths if specified
-            if (prog.stdout_logfile) {
+            if (prog.stdout_log.file) {
                 try {
-                    // This will throw if path is unsafe
-                    prog.stdout_logfile = util::validate_log_path(*prog.stdout_logfile);
+                    prog.stdout_log.file = util::validate_log_path(*prog.stdout_log.file);
                 } catch (const util::SecurityError& e) {
                     throw ConfigParseError("Program [" + key + "] stdout_logfile: " + e.what());
+                }
+            }
+            if (prog.stderr_log.file) {
+                try {
+                    prog.stderr_log.file = util::validate_log_path(*prog.stderr_log.file);
+                } catch (const util::SecurityError& e) {
+                    throw ConfigParseError("Program [" + key + "] stderr_logfile: " + e.what());
                 }
             }
 

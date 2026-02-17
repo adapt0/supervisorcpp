@@ -43,11 +43,11 @@ supervisor ctl status                     # equivalent via subcommand
 
 ```bash
 $ supervisorctl
-supervisord> status
+supervisor> status
 myapp        RUNNING    pid 1234, uptime 0:05:23
 webapp       STOPPED
 
-supervisord> help
+supervisor> help
 status          Show process status
 start <name>    Start a process
 stop <name>     Stop a process
@@ -94,27 +94,32 @@ environment=PATH="/usr/local/bin:/usr/bin",CONFIG_ENV="production"
 #### [supervisord]
 | Option | Default | Description |
 |--------|---------|-------------|
+| `childlogdir` | `/var/log/supervisor` | Directory for AUTO child logs |
 | `logfile` | `/var/log/supervisord.log` | Main log file |
 | `loglevel` | `info` | Log level: debug, info, warn, error |
+| `umask` | `022` | File creation mask (octal) |
 | `user` | `root` | Run daemon as user |
-| `childlogdir` | `/var/log/supervisor` | Directory for AUTO child logs |
 
 #### [program:x]
 | Option | Default | Description |
 |--------|---------|-------------|
+| `autorestart` | `true` | Restart on exit |
 | `command` | *(required)* | Command to run |
 | `directory` | — | Working directory |
-| `user` | `root` | Run process as user |
-| `autorestart` | `true` | Restart on exit |
-| `startsecs` | `1` | Seconds before considered started |
-| `startretries` | `3` | Max restart attempts before FATAL |
-| `stopwaitsecs` | `10` | Seconds before SIGKILL after stop signal |
-| `stopsignal` | `TERM` | Signal on stop: TERM, HUP, INT, QUIT, KILL, USR1, USR2 |
-| `stdout_logfile` | — | Stdout log path (supports `%(program_name)s`) |
-| `stdout_logfile_maxbytes` | `50MB` | Max log size before rotation |
-| `stdout_logfile_backups` | `10` | Rotated log files to keep |
-| `redirect_stderr` | `false` | Merge stderr into stdout log |
 | `environment` | — | Env vars: `KEY1="val1",KEY2="val2"` |
+| `redirect_stderr` | `false` | Merge stderr into stdout log |
+| `startretries` | `3` | Max restart attempts before FATAL |
+| `startsecs` | `1` | Seconds before considered started |
+| `stderr_logfile_backups` | `10` | Rotated stderr log files to keep |
+| `stderr_logfile_maxbytes` | `50MB` | Max stderr log size before rotation |
+| `stderr_logfile` | — | Stderr log path (supports `%(program_name)s`) |
+| `stdout_logfile_backups` | `10` | Rotated log files to keep |
+| `stdout_logfile_maxbytes` | `50MB` | Max log size before rotation |
+| `stdout_logfile` | — | Stdout log path (supports `%(program_name)s`) |
+| `stopsignal` | `TERM` | Signal on stop: TERM, HUP, INT, QUIT, KILL, USR1, USR2 |
+| `stopwaitsecs` | `10` | Seconds before SIGKILL after stop signal |
+| `umask` | — | Per-process file creation mask (octal) |
+| `user` | `root` | Run process as user |
 
 #### [include]
 | Option | Description |

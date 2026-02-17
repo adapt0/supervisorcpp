@@ -383,4 +383,150 @@ stdout_logfile=)" + log1.str() + "\n");
     BOOST_CHECK(info[0].state == process::State::STOPPED || info[0].state == process::State::STOPPING);
 }
 
+// Test 8: Separate stderr log capture
+BOOST_AUTO_TEST_CASE(StderrLogCapture) {
+    const auto sock = TempManager::file("sock_8.sock");
+    const auto log1 = TempManager::file("supervisord_8.log");
+    const auto stdout_log = TempManager::file("stderr_test_stdout.log");
+    const auto stderr_log = TempManager::file("stderr_test_stderr.log");
+
+    const auto cfg = TempManager::config(R"(
+[unix_http_server]
+file=)" + sock.str() + R"(
+
+[supervisord]
+logfile=)" + log1.str() + R"(
+
+[program:stderr_test]
+command=/bin/sh -c "echo 'stdout message'; echo 'stderr message' >&2"
+autorestart=false
+startsecs=0
+stdout_logfile=)" + stdout_log.str() + R"(
+stderr_logfile=)" + stderr_log.str() + "\n");
+
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
+
+    boost::asio::io_context io_context;
+    process::ProcessManager pm(io_context, 100ms);
+
+    for (const auto& prog : parsed_config.programs) {
+        pm.add_process(prog);
+    }
+
+    pm.start_all();
+
+    // Wait for both logs to have content
+    const auto& out_path = stdout_log.path();
+    const auto& err_path = stderr_log.path();
+    const bool reached = poll_until(io_context, [&out_path, &err_path] {
+        const auto out = test_util::read_file(out_path);
+        const auto err = test_util::read_file(err_path);
+        return out.find("stdout message") != std::string::npos
+            && err.find("stderr message") != std::string::npos;
+    }, 10000ms);
+
+    BOOST_CHECK(reached);
+
+    // Verify stdout only in stdout log, stderr only in stderr log
+    const auto stdout_content = test_util::read_file(out_path);
+    const auto stderr_content = test_util::read_file(err_path);
+    BOOST_CHECK(stdout_content.find("stdout message") != std::string::npos);
+    BOOST_CHECK(stderr_content.find("stderr message") != std::string::npos);
+    BOOST_CHECK(stdout_content.find("stderr message") == std::string::npos);
+    BOOST_CHECK(stderr_content.find("stdout message") == std::string::npos);
+}
+
+// Test 9: redirect_stderr merges into stdout log (no separate stderr file)
+BOOST_AUTO_TEST_CASE(RedirectStderrToStdout) {
+    const auto sock = TempManager::file("sock_9.sock");
+    const auto log1 = TempManager::file("supervisord_9.log");
+    const auto stdout_log = TempManager::file("redirect_test.log");
+
+    const auto cfg = TempManager::config(R"(
+[unix_http_server]
+file=)" + sock.str() + R"(
+
+[supervisord]
+logfile=)" + log1.str() + R"(
+
+[program:redirect_test]
+command=/bin/sh -c "echo 'out line'; echo 'err line' >&2"
+autorestart=false
+startsecs=0
+redirect_stderr=true
+stdout_logfile=)" + stdout_log.str() + "\n");
+
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
+
+    boost::asio::io_context io_context;
+    process::ProcessManager pm(io_context, 100ms);
+
+    for (const auto& prog : parsed_config.programs) {
+        pm.add_process(prog);
+    }
+
+    pm.start_all();
+
+    const auto& out_path = stdout_log.path();
+    const bool reached = poll_until(io_context, [&out_path] {
+        const auto content = test_util::read_file(out_path);
+        return content.find("out line") != std::string::npos
+            && content.find("err line") != std::string::npos;
+    }, 10000ms);
+
+    BOOST_CHECK(reached);
+
+    const auto content = test_util::read_file(out_path);
+    BOOST_CHECK(content.find("out line") != std::string::npos);
+    BOOST_CHECK(content.find("err line") != std::string::npos);
+}
+
+// Test 10: Per-process umask affects child file creation
+BOOST_AUTO_TEST_CASE(PerProcessUmask) {
+    const auto sock = TempManager::file("sock_10.sock");
+    const auto log1 = TempManager::file("supervisord_10.log");
+    const auto stdout_log = TempManager::file("umask_test.log");
+    const auto test_file = TempManager::file("umask_created.txt");
+
+    // umask 077 → files created with mode 0600 (0666 & ~077)
+    const auto cfg = TempManager::config(R"(
+[unix_http_server]
+file=)" + sock.str() + R"(
+
+[supervisord]
+logfile=)" + log1.str() + R"(
+
+[program:umask_test]
+command=/bin/sh -c "touch )" + test_file.str() + R"("
+autorestart=false
+startsecs=0
+umask=077
+stdout_logfile=)" + stdout_log.str() + "\n");
+
+    const auto parsed_config = config::ConfigParser::parse_file(cfg.path());
+
+    boost::asio::io_context io_context;
+    process::ProcessManager pm(io_context, 100ms);
+
+    for (const auto& prog : parsed_config.programs) {
+        pm.add_process(prog);
+    }
+
+    pm.start_all();
+
+    // Wait for the file to be created
+    const auto& created_path = test_file.path();
+    const bool reached = poll_until(io_context, [&created_path] {
+        return fs::exists(created_path);
+    }, 10000ms);
+
+    BOOST_CHECK(reached);
+
+    // Check file permissions: umask 077 → 0600
+    struct stat st;
+    BOOST_REQUIRE_EQUAL(stat(test_file.c_str(), &st), 0);
+    const auto perms = st.st_mode & 0777;
+    BOOST_CHECK_EQUAL(perms, 0600);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

@@ -4,12 +4,11 @@ Items grouped by priority. Spec references are to [SPECIFICATION.md](SPECIFICATI
 
 ## P1 — Spec-required
 
-- [ ] **Exponential backoff** — Currently fixed 1-second retry (`process.cpp:212`). Spec 2.1.1 requires "exponential backoff on repeated failures". Should use `min(2^retry, cap)` with the retry count already tracked in `startretries`
-- [ ] **stderr_logfile** — Separate stderr log path (spec 2.2.1 table). Currently only `redirect_stderr` merges to stdout; no independent stderr capture
+*(all P1 items completed)*
 
 ## P2 — Production readiness (spec Phase 6)
 
-- [ ] **umask** — `[supervisord] umask` (default `022`) applied at daemon startup — controls log file permissions. Per-process `[program:x] umask` applied before `execve()` for child-created files
+*(all P2 items completed)*
 
 ## P3 — Future / out of scope
 
@@ -44,3 +43,6 @@ These are beyond the spec's scope limitations (§1.3) or not needed for our targ
 - [x] Inline comment stripping via `CommentStrippingBuf`
 - [x] Socket permissions — `set_socket_permissions()` (chmod 0600)
 - [x] Pidfile — RAII `PidFileGuard`, config + CLI `--pidfile` override, path validation
+- [x] Exponential backoff — `min(2^retry, 60)` delay in BACKOFF state, replaces fixed 1-second retry
+- [x] stderr_logfile — Independent stderr capture with async pipe reads, separate LogWriter, rotation
+- [x] umask — `[supervisord] umask` (default `022`) at daemon startup; per-process `[program:x] umask` before `execve()`

@@ -161,15 +161,10 @@ private:
      */
     void set_spawn_error_(const std::string& error);
 
-    /**
-     * Start async reading from stdout pipe
-     */
     void start_stdout_read_();
-
-    /**
-     * Handle stdout read completion
-     */
+    void start_stderr_read_();
     void handle_stdout_read_(const boost::system::error_code& error, size_t bytes_transferred);
+    void handle_stderr_read_(const boost::system::error_code& error, size_t bytes_transferred);
 
     // Configuration
     config::ProgramConfig config_;
@@ -189,12 +184,15 @@ private:
     TimePoint stop_time_;
     TimePoint state_change_time_;
 
-    // Log writer
-    std::unique_ptr<logger::LogWriter> log_writer_;
+    // Log writers
+    std::unique_ptr<logger::LogWriter> stdout_log_writer_;
+    std::unique_ptr<logger::LogWriter> stderr_log_writer_;
 
     // Async IO for stdout/stderr
     std::unique_ptr<boost::asio::posix::stream_descriptor> stdout_stream_;
+    std::unique_ptr<boost::asio::posix::stream_descriptor> stderr_stream_;
     std::array<char, 4096> stdout_buffer_;
+    std::array<char, 4096> stderr_buffer_;
 };
 
 } // namespace supervisorcpp::process

@@ -45,14 +45,20 @@ Process::Process(boost::asio::io_context& io_context, const config::ProgramConfi
 , retry_count_(0)
 , state_change_time_(std::chrono::steady_clock::now())
 {
-    // Create log writer if logging is configured
-    if (config_.stdout_logfile.has_value()) {
-        log_writer_ = std::make_unique<logger::LogWriter>(
-            *config_.stdout_logfile,
-            config_.stdout_logfile_maxbytes,
-            config_.stdout_logfile_backups
-        );
-    }
+    // Create log writers if logging is configured
+    const auto create_writer = [](const config::ProgramConfig::Log& log) {
+        if (log.file.has_value()) {
+            return std::make_unique<logger::LogWriter>(
+                *log.file,
+                log.file_maxbytes,
+                log.file_backups
+            );
+        } else {
+            return std::unique_ptr<logger::LogWriter>();
+        }
+    };
+    stdout_log_writer_ = create_writer(config_.stdout_log);
+    stderr_log_writer_ = create_writer(config_.stderr_log);
 
     LOG_TRACE << *this << "Created";
 }
@@ -68,9 +74,10 @@ Process::~Process() {
         boost::system::error_code ec;
         stdout_stream_->close(ec);
     }
-
-    // Close log writer
-    if (log_writer_) log_writer_.reset();
+    if (stderr_stream_ && stderr_stream_->is_open()) {
+        boost::system::error_code ec;
+        stderr_stream_->close(ec);
+    }
 }
 
 bool Process::start() {
@@ -204,13 +211,16 @@ void Process::update() {
         }
         break;
 
-    case State::BACKOFF:
-        // Wait a bit before retrying (exponential backoff could be added here)
-        if (elapsed >= 1) {  // Wait 1 second before retry
-            LOG_INFO << *this << "Retrying starting of process";
+    case State::BACKOFF: {
+        // Exponential backoff: 1, 2, 4, 8, ... seconds, capped at 60
+        const auto delay = std::min(1 << retry_count_, 60);
+        if (elapsed >= delay) {
+            LOG_INFO << *this << "Retrying start (attempt " << (retry_count_ + 1)
+                     << "/" << config_.startretries << ", waited " << delay << "s)";
             start();
         }
         break;
+    }
 
     default:
         break;
@@ -223,8 +233,8 @@ ProcessInfo Process::get_info() const {
     info.state = state_;
     info.pid = pid_;
     info.exitstatus = exitstatus_;
-    info.stdout_logfile = config_.stdout_logfile.has_value() ? config_.stdout_logfile->string() : "";
-    info.stderr_logfile = "",  // We redirect stderr to stdou;
+    info.stdout_logfile = config_.stdout_log.file.has_value() ? config_.stdout_log.file->string() : "";
+    info.stderr_logfile = config_.stderr_log.file.has_value() ? config_.stderr_log.file->string() : "";
     info.spawnerr = spawn_error_;
 
     const auto now_time = std::chrono::system_clock::now();
@@ -273,14 +283,14 @@ pid_t Process::spawn_() {
     int stdout_pipe[2] = {-1, -1};
     int stderr_pipe[2] = {-1, -1};
 
-    if (config_.stdout_logfile.has_value()) {
+    if (config_.stdout_log.file.has_value()) {
         if (pipe2(stdout_pipe, O_CLOEXEC) < 0) {
             set_spawn_error_("Failed to create stdout pipe: " + std::string(strerror(errno)));
             return -1;
         }
     }
 
-    if (!config_.redirect_stderr && config_.stdout_logfile.has_value()) {
+    if (!config_.redirect_stderr && config_.stderr_log.file.has_value()) {
         if (pipe2(stderr_pipe, O_CLOEXEC) < 0) {
             set_spawn_error_("Failed to create stderr pipe: " + std::string(strerror(errno)));
             if (stdout_pipe[0] >= 0) {
@@ -343,7 +353,7 @@ pid_t Process::spawn_() {
     if (stderr_pipe[1] >= 0) close(stderr_pipe[1]);
 
     // Setup async reading from stdout pipe
-    if (stdout_pipe[0] >= 0 && log_writer_) {
+    if (stdout_pipe[0] >= 0 && stdout_log_writer_) {
         try {
             // Set non-blocking (preserve existing flags)
             const int flags = fcntl(stdout_pipe[0], F_GETFL, 0);
@@ -366,8 +376,25 @@ pid_t Process::spawn_() {
         close(stdout_pipe[0]);
     }
 
-    // For now, we don't handle stderr separately (redirect_stderr handles it)
-    if (stderr_pipe[0] >= 0) close(stderr_pipe[0]);
+    // Setup async reading from stderr pipe
+    if (stderr_pipe[0] >= 0 && stderr_log_writer_) {
+        try {
+            const int flags = fcntl(stderr_pipe[0], F_GETFL, 0);
+            fcntl(stderr_pipe[0], F_SETFL, flags | O_NONBLOCK);
+
+            stderr_stream_ = std::make_unique<boost::asio::posix::stream_descriptor>(
+                io_context_, stderr_pipe[0]
+            );
+
+            start_stderr_read_();
+
+        } catch (const std::exception& e) {
+            LOG_ERROR << *this << "Failed to setup async reading for stderr - " << e.what();
+            close(stderr_pipe[0]);
+        }
+    } else if (stderr_pipe[0] >= 0) {
+        close(stderr_pipe[0]);
+    }
 
     return child_pid;
 }
@@ -392,6 +419,11 @@ void Process::setup_child_process_() {
 
     // Setup environment
     setup_environment_();
+
+    // Apply per-process umask if configured
+    if (config_.umask.has_value()) {
+        ::umask(*config_.umask);
+    }
 
     // Switch user (must be last before exec)
     if (!switch_user_()) {
@@ -567,21 +599,62 @@ void Process::handle_stdout_read_(const boost::system::error_code& error, size_t
         }
 
         // Flush any remaining data in log writer
-        if (log_writer_) {
-            log_writer_->flush();
+        if (stdout_log_writer_) {
+            stdout_log_writer_->flush();
         }
 
         return;
     }
 
-    if (bytes_transferred > 0 && log_writer_) {
+    if (bytes_transferred > 0 && stdout_log_writer_) {
         // Write to log file
         std::string data(stdout_buffer_.data(), bytes_transferred);
-        log_writer_->write(data);
+        stdout_log_writer_->write(data);
     }
 
     // Continue reading
     start_stdout_read_();
+}
+
+void Process::start_stderr_read_() {
+    if (!stderr_stream_ || !stderr_stream_->is_open()) {
+        return;
+    }
+
+    stderr_stream_->async_read_some(
+        boost::asio::buffer(stderr_buffer_),
+        [this](const boost::system::error_code& error, size_t bytes_transferred) {
+            handle_stderr_read_(error, bytes_transferred);
+        }
+    );
+}
+
+void Process::handle_stderr_read_(const boost::system::error_code& error, size_t bytes_transferred) {
+    if (error) {
+        if (error == boost::asio::error::eof) {
+            LOG_DEBUG << *this << "Closed stderr";
+        } else if (error != boost::asio::error::operation_aborted) {
+            LOG_ERROR << *this << "Error reading from process stderr - " << error.message();
+        }
+
+        if (stderr_stream_ && stderr_stream_->is_open()) {
+            boost::system::error_code close_error;
+            stderr_stream_->close(close_error);
+        }
+
+        if (stderr_log_writer_) {
+            stderr_log_writer_->flush();
+        }
+
+        return;
+    }
+
+    if (bytes_transferred > 0 && stderr_log_writer_) {
+        std::string data(stderr_buffer_.data(), bytes_transferred);
+        stderr_log_writer_->write(data);
+    }
+
+    start_stderr_read_();
 }
 
 } // namespace supervisorcpp::process

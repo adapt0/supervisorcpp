@@ -6,6 +6,7 @@
 #include "rpc/xmlrpc.h"
 #include "util/pidfile.h"
 #include <csignal>
+#include <sys/stat.h>
 #include <boost/program_options.hpp>
 
 namespace supervisorcpp {
@@ -174,6 +175,9 @@ int supervisord_main(int argc, char* argv[]) {
         const auto config_file = vm["configuration"].as<std::string>();
         LOG_INFO << "Config: " << config_file;
         const auto config = config::ConfigParser::parse_file(config_file);
+
+        // Apply daemon-level umask (controls log file permissions, etc.)
+        ::umask(config.supervisord.umask);
 
         LOG_INFO << "Log: " << config.supervisord.logfile.string();
         logger::init_file_logging(

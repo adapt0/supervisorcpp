@@ -61,6 +61,7 @@ STOPPED -> STARTING -> RUNNING -> STOPPING -> STOPPED
 - `logfile`: Main supervisord log file path
 - `loglevel`: info, debug, warn, error
 - `user`: User to run supervisord as (must be root to support per-process users)
+- `umask`: File creation mask (octal, default: 022)
 - `childlogdir`: Directory for child process logs
 
 **[rpcinterface:supervisor]**
@@ -73,14 +74,19 @@ STOPPED -> STARTING -> RUNNING -> STOPPING -> STOPPED
 - `files`: Glob patterns for additional configuration files (*.ini)
 
 **[program:name]**
-- `command`: Command line to execute (required)
-- `environment`: Environment variables (KEY=value,KEY2=value2)
-- `directory`: Working directory
 - `autorestart`: true/false (default: true)
-- `user`: User to run process as
-- `stdout_logfile`: Log file path with %(program_name)s substitution
-- `stdout_logfile_maxbytes`: Max log size (supports KB, MB, GB suffixes)
+- `command`: Command line to execute (required)
+- `directory`: Working directory
+- `environment`: Environment variables (KEY=value,KEY2=value2)
 - `redirect_stderr`: Redirect stderr to stdout (default: false)
+- `stderr_logfile_backups`: Rotated stderr log files to keep (default: 10)
+- `stderr_logfile_maxbytes`: Max stderr log size (supports KB, MB, GB suffixes)
+- `stderr_logfile`: Separate stderr log path with %(program_name)s substitution
+- `stdout_logfile_backups`: Rotated log files to keep (default: 10)
+- `stdout_logfile_maxbytes`: Max log size (supports KB, MB, GB suffixes)
+- `stdout_logfile`: Log file path with %(program_name)s substitution
+- `umask`: Per-process file creation mask (octal)
+- `user`: User to run process as
 
 #### 2.2.2 Variable Substitution
 - `%(program_name)s`: Program name from [program:xxx]
@@ -98,10 +104,11 @@ STOPPED -> STARTING -> RUNNING -> STOPPING -> STOPPED
 - Log supervisord events: startup, shutdown, process state changes
 
 #### 2.3.2 Child Process Logs
-- Capture stdout (and stderr if redirect_stderr=true)
+- Capture stdout via `stdout_logfile`
+- Capture stderr independently via `stderr_logfile`, or merge into stdout via `redirect_stderr=true`
 - Line-buffered output
 - Size-based rotation on line boundaries
-- Format: `stdout_logfile_maxbytes` (e.g., "10MB")
+- Format: `stdout_logfile_maxbytes` / `stderr_logfile_maxbytes` (e.g., "10MB")
 - Keep rotated logs as `.log.1`, `.log.2`, etc.
 
 ### 2.4 RPC Interface (supervisorctl compatibility)
