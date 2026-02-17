@@ -77,7 +77,7 @@ void Supervisord::register_rpc_handlers_() {
     rpc_server_ptr_->register_handler("supervisor.getProcessInfo", [this](const RpcParams& params) {
         if (params.empty()) throw std::runtime_error("Process name required");
         const auto* proc = process_manager_.get_process(params[0]);
-        if (!proc) throw std::runtime_error("Process not found: " + params[0]);
+        if (!proc) throw std::runtime_error("BAD_NAME: " + params[0]);
 
         return wrap( proc->get_info() ).str();
     });

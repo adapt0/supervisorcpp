@@ -24,6 +24,19 @@ namespace supervisorcpp {
 using ptree = boost::property_tree::ptree;
 using RpcParams = supervisorcpp::rpc::RpcParams;
 
+class XmlRpcError : public std::runtime_error {
+public:
+    XmlRpcError(std::string_view code, std::string_view name, std::string message)
+    : std::runtime_error(std::move(message)), code_{code}, name_{name} { }
+
+    std::string_view code() const { return code_; }
+    std::string_view name() const { return name_; }
+
+private:
+    std::string code_;
+    std::string name_;
+};
+
 /**
  * XML-RPC client for supervisorctl
  */
@@ -174,7 +187,12 @@ private:
             call_method_("supervisor.startAllProcesses");
             std::cout << "All processes restarted" << std::endl;
         } else {
-            call_method_("supervisor.stopProcess", {args[0]});
+            // Stop first, but tolerate NOT_RUNNING (process may already be stopped)
+            try {
+                call_method_("supervisor.stopProcess", {args[0]});
+            } catch (const XmlRpcError& e) {
+                if (e.code() != "NOT_RUNNING") throw;
+            }
             call_method_("supervisor.startProcess", {args[0]});
             std::cout << args[0] << ": restarted" << std::endl;
         }
@@ -313,6 +331,8 @@ private:
             check_fault_(tree);
             return tree;
 
+        } catch (const XmlRpcError&) {
+            throw;
         } catch (const boost::system::system_error& e) {
             if (e.code() == boost::asio::error::connection_refused) {
                 throw std::runtime_error("Connection refused — is supervisord running?");
@@ -384,7 +404,7 @@ private:
         oss << "  <methodName>" << util::escape_xml(method_name) << "</methodName>\n";
         oss << "  <params>";
         for (const auto& param : params) {
-            oss << "<param>" << xmlrpc::Value{param} << "</param>";
+            oss << "<param><value>" << xmlrpc::Value{param} << "</value></param>";
         }
         oss << "  </params>\n";
         oss << "</methodCall>\n";
@@ -406,16 +426,31 @@ private:
         const auto fault_struct = tree.get_child_optional("methodResponse.fault.value.struct");
         if (!fault_struct) return;
 
+        std::string fault;
         for (const auto& member : *fault_struct) {
             if (member.first != "member") continue;
             if (member.second.get<std::string>("name", "") != "faultString") continue;
+            fault = member.second.get<std::string>("value.string", "");
+            break;
+        }
+        if (fault.empty()) fault = "Unknown RPC fault";
 
-            throw std::runtime_error(
-                member.second.get<std::string>("value.string", "Unknown RPC fault")
-            );
+        // Translate "CODE: name" faults to friendly XmlRpcError
+        static constexpr std::pair<std::string_view, std::string_view> translations[] = {
+            { "BAD_NAME",        "no such process" },
+            { "NOT_RUNNING",     "not running" },
+            { "ALREADY_STARTED", "already running" },
+            { "SPAWN_ERROR",     "spawn error" },
+        };
+
+        for (const auto& [code, friendly] : translations) {
+            if (const auto sep = std::string{code} + ": "; fault.starts_with(sep)) {
+                const auto name = fault.substr(sep.size());
+                throw XmlRpcError(code, name, name + " - " + std::string{friendly});
+            }
         }
 
-        throw std::runtime_error("Unknown RPC fault");
+        throw std::runtime_error(fault);
     }
 
     std::string socket_path_;
