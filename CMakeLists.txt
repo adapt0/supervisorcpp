@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025-2026 Chris Byrne
+
 cmake_minimum_required(VERSION 3.28)
 project(supervisorcpp VERSION 26.02.0 LANGUAGES CXX)
 

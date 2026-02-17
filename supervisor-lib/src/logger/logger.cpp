@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "logger.h"
 #include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>

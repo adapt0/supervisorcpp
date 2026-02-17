@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "secure.h"
 #include <algorithm>
 #include <string>

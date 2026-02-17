@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "platform.h"
 #include <fcntl.h>
 #include <unistd.h>

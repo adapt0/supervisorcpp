@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "rpc_server.h"
 #include "rpc_connection.h"
 #include "logger/logger.h"

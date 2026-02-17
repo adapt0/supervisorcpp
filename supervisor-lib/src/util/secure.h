@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #pragma once
 #ifndef SUPERVISOR_LIB__UTIL__SECURE
 #define SUPERVISOR_LIB__UTIL__SECURE

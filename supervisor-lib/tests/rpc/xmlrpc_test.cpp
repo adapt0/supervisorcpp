@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #define BOOST_TEST_MODULE XmlRpcTest
 #include <boost/test/unit_test.hpp>
 #include "process/process.h"

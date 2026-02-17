@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "config_parser.h"
 #include "ini_reader.h"
 #include "ptree_ext.h"

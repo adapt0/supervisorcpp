@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "xmlrpc.h"
 #include "process/process.h"
 #include "util/string.h"

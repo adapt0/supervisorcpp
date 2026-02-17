@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025-2026 Chris Byrne
+
 #include "process_manager.h"
 #include "logger/logger.h"
 #include <algorithm>
