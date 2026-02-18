@@ -139,29 +139,6 @@ struct Configuration {
     std::vector<ProgramConfig> programs;
     std::set<std::string> included; ///< track included files (loop check)
 
-    /**
-     * Find a program by name
-     */
-    const ProgramConfig* find_program(const std::string& name) const {
-        for (const auto& prog : programs) {
-            if (prog.name == name) {
-                return &prog;
-            }
-        }
-        return nullptr;
-    }
-
-    /**
-     * Find a program by name (mutable)
-     */
-    ProgramConfig* find_program(const std::string& name) {
-        for (auto& prog : programs) {
-            if (prog.name == name) {
-                return &prog;
-            }
-        }
-        return nullptr;
-    }
 };
 
 } // namespace supervisorcpp::config

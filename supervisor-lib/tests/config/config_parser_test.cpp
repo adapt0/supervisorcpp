@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 #include "config/config_parser.h"
 #include "util/test_util.h"
+#include <algorithm>
 #include <fstream>
 #include <filesystem>
 
@@ -204,15 +205,22 @@ BOOST_AUTO_TEST_CASE(TestFindProgram) {
     config.programs.push_back(prog1);
     config.programs.push_back(prog2);
 
-    const ProgramConfig* found = config.find_program("app1");
+    const auto find_program = [&](const std::string& name) {
+        const auto it = std::ranges::find_if(config.programs, [&](const auto& p) {
+            return p.name == name;
+        });
+        return it != std::end(config.programs) ? &*it : nullptr;
+    };
+
+    const auto* found = find_program("app1");
     BOOST_REQUIRE(found != nullptr);
     BOOST_CHECK_EQUAL(found->name, "app1");
 
-    found = config.find_program("app2");
+    found = find_program("app2");
     BOOST_REQUIRE(found != nullptr);
     BOOST_CHECK_EQUAL(found->name, "app2");
 
-    found = config.find_program("nonexistent");
+    found = find_program("nonexistent");
     BOOST_CHECK(found == nullptr);
 }
 
