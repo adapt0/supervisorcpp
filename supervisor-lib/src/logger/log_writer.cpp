@@ -65,37 +65,21 @@ ssize_t LogWriter::write(const std::string& data) {
         if (!openNL_()) return -1;
     }
 
-    // Add to pending buffer
-    pending_buffer_ += data;
+    // Only search new data for newlines — prior content had no newlines (already flushed).
+    const auto nl_in_new = data.rfind('\n');
+    const auto last_newline = (nl_in_new != std::string::npos) ? pending_buffer_.size() + nl_in_new : std::string::npos;
+    pending_buffer_ += data; // add to pending buffer
 
-    // Find last newline
-    size_t last_newline = pending_buffer_.rfind('\n');
+    constexpr size_t MAX_PENDING_BUFFER = 64 * 1024;  // 64KB
+    const auto flush_end = (last_newline != std::string::npos) ? last_newline + 1
+        : (pending_buffer_.size() >= MAX_PENDING_BUFFER) ? pending_buffer_.size()
+        : size_t{0};
 
-    if (last_newline != std::string::npos) {
-        // We have complete lines to write
-        std::string to_write = pending_buffer_.substr(0, last_newline + 1);
-        pending_buffer_ = pending_buffer_.substr(last_newline + 1);
+    if (flush_end == 0) return 0;
 
-        // Check if we need to rotate before writing
-        if (max_bytes_ > 0 && current_size_ + to_write.size() > max_bytes_) {
-            rotateNL_();
-        }
-
-        // Write the complete lines
-        file_.write(to_write.c_str(), to_write.size());
-        if (!file_) {
-            LOG_ERROR << "Failed to write to log file: " << logfile_;
-            return -1;
-        }
-
-        current_size_ += to_write.size();
-        file_.flush();  // Flush after each line boundary
-
-        return to_write.size();
-    }
-
-    // No complete lines yet, just buffered
-    return 0;
+    const auto res = writeNL_(std::string_view{pending_buffer_.c_str(), flush_end});
+    pending_buffer_.erase(0, flush_end);
+    return res;
 }
 
 ssize_t LogWriter::write_line(const std::string& line) {
@@ -132,6 +116,22 @@ void LogWriter::closeNL_() {
     }
 
     file_.close();
+}
+
+ssize_t LogWriter::writeNL_(const std::string_view& str) {
+    if (max_bytes_ > 0 && current_size_ + str.size() > max_bytes_) {
+        rotateNL_();
+    }
+
+    file_.write(str.data(), str.size());
+    if (!file_) {
+        LOG_ERROR << "Failed to write to log file: " << logfile_;
+        return -1;
+    }
+
+    current_size_ += str.size();
+    file_.flush();
+    return str.size();
 }
 
 void LogWriter::rotateNL_() {

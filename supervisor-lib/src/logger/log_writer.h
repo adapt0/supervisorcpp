@@ -82,10 +82,10 @@ private:
     void rotateNL_();
 
     /**
-     * Check if rotation is needed and rotate if necessary
-     * Only rotates on line boundaries (after \n in buffer)
+     * Write data to file, rotating first if needed. Returns bytes written or -1 on error.
+     * Caller must hold mutex_.
      */
-    void check_rotation_();
+    ssize_t writeNL_(const std::string_view& str);
 
     /**
      * Ensure log directory exists
