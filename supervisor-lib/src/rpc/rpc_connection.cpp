@@ -147,7 +147,7 @@ std::pair<std::string, RpcParams> RpcConnection::parse_xmlrpc_request_(const std
     try {
         pt::ptree tree;
         {
-            std::istringstream iss(xml);
+            std::istringstream iss{xml};
             pt::read_xml(iss, tree);
         }
 
@@ -158,11 +158,13 @@ std::pair<std::string, RpcParams> RpcConnection::parse_xmlrpc_request_(const std
         if (const auto params_tree = tree.get_child_optional("methodCall.params")) {
             for (const auto& param : *params_tree) {
                 if (param.first == "param") {
-                    // Try to get string value
+                    // Try typed values first, then implicit string per XML-RPC spec
                     if (const auto str_val = param.second.get_optional<std::string>("value.string")) {
                         params.push_back(*str_val);
                     } else if (const auto int_val = param.second.get_optional<int>("value.int")) {
                         params.push_back(std::to_string(*int_val));
+                    } else if (const auto val = param.second.get_optional<std::string>("value")) {
+                        params.push_back(*val);
                     }
                 }
             }
