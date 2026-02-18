@@ -85,8 +85,8 @@ Process::~Process() {
 
 bool Process::start() {
     if (state_ == State::RUNNING || state_ == State::STARTING) {
-        LOG_WARN << *this << "Already running or starting";
-        return false;
+        LOG_DEBUG << *this << "Already running or starting";
+        return true;
     }
 
     const pid_t child_pid = spawn_();

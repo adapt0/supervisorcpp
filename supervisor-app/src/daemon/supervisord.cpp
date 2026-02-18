@@ -91,6 +91,7 @@ void Supervisord::register_rpc_handlers_() {
     });
 
     rpc_server_ptr_->register_handler("supervisor.shutdown", [this](const RpcParams&) {
+        LOG_INFO << "RPC shutdown";
         boost::asio::post(io_context_, [this]() {
             process_manager_.stop_all();
             io_context_.stop();
@@ -99,6 +100,7 @@ void Supervisord::register_rpc_handlers_() {
     });
 
     rpc_server_ptr_->register_handler("supervisor.reloadConfig", [this](const RpcParams&) {
+        LOG_INFO << "RPC reload config";
         reload_config_();
         return Value{true}.str();
     });
