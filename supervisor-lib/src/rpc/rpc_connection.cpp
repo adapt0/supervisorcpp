@@ -74,7 +74,9 @@ void RpcConnection::handle_read_(const boost::system::error_code& error, size_t 
         const auto after_name = static_cast<size_t>(cl_range.end() - headers.begin());
         const auto val_start = headers.find_first_not_of(" \t", after_name);
         if (val_start != std::string_view::npos) {
-            content_length = std::stoull(std::string{headers.substr(val_start)});
+            const auto val_end = headers.find_first_of("\r\n", val_start);
+            const auto len = (val_end != std::string_view::npos) ? val_end - val_start : std::string_view::npos;
+            content_length = std::stoull(std::string{headers.substr(val_start, len)});
         }
         if (request_data_.size() - body_offset < content_length) {
             if (!got_eof) begin_read_();
