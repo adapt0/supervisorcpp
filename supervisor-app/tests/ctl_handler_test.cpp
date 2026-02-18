@@ -60,8 +60,8 @@ struct RpcFixture {
 
     void wait_for(const std::string& name, process::State state) {
         poll_until([this, &name, state] {
-            const auto* proc = pm_.get_process(name);
-            return proc && proc->state() == state;
+            const auto process_ptr = pm_.get_process(name);
+            return process_ptr && process_ptr->state() == state;
         });
     }
 

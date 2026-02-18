@@ -5,6 +5,7 @@
 #ifndef SUPERVISOR_LIB__PROCESS__PROCESS
 #define SUPERVISOR_LIB__PROCESS__PROCESS
 
+#include "process_fwd.h"
 #include "config/config_types.h"
 #include <array>
 #include <chrono>
@@ -56,9 +57,14 @@ struct ProcessInfo {
 /**
  * Manages a single supervised process
  */
-class Process {
+class Process : public std::enable_shared_from_this<Process> {
+    struct UseCreate { };
 public:
-    explicit Process(boost::asio::io_context& io_context, const config::ProgramConfig& config);
+    static auto create(boost::asio::io_context& io_context, const config::ProgramConfig& config) {
+        return std::make_shared<Process>(UseCreate{}, io_context, config);
+    }
+
+    explicit Process(UseCreate, boost::asio::io_context& io_context, const config::ProgramConfig& config);
     ~Process();
 
     Process(const Process&) = delete;

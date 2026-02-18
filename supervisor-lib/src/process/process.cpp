@@ -39,7 +39,7 @@ std::ostream& operator<<(std::ostream& outs, const Process& process) {
     return outs << "'" << process.name() << "' ";
 }
 
-Process::Process(boost::asio::io_context& io_context, const config::ProgramConfig& config)
+Process::Process(UseCreate, boost::asio::io_context& io_context, const config::ProgramConfig& config)
 : config_(config)
 , io_context_(io_context)
 , state_(State::STOPPED)
@@ -583,8 +583,11 @@ void Process::start_stdout_read_() {
 
     stdout_stream_->async_read_some(
         boost::asio::buffer(stdout_buffer_),
-        [this](const boost::system::error_code& error, size_t bytes_transferred) {
-            handle_stdout_read_(error, bytes_transferred);
+        [
+            self_weak = ProcessWeak{shared_from_this()}
+        ](const boost::system::error_code& error, size_t bytes_transferred) {
+            const auto self_ptr = self_weak.lock();
+            if (self_ptr) self_ptr->handle_stdout_read_(error, bytes_transferred);
         }
     );
 }
@@ -629,8 +632,11 @@ void Process::start_stderr_read_() {
 
     stderr_stream_->async_read_some(
         boost::asio::buffer(stderr_buffer_),
-        [this](const boost::system::error_code& error, size_t bytes_transferred) {
-            handle_stderr_read_(error, bytes_transferred);
+        [
+            self_weak = ProcessWeak{shared_from_this()}
+        ](const boost::system::error_code& error, size_t bytes_transferred) {
+            const auto self_ptr = self_weak.lock();
+            if (self_ptr) self_ptr->handle_stderr_read_(error, bytes_transferred);
         }
     );
 }

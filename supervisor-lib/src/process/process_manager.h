@@ -72,14 +72,7 @@ public:
     /**
      * Get process by name
      */
-    const Process* get_process(const std::string& name) const;
-
-    /**
-     * Get all processes
-     */
-    const auto& get_processes() const noexcept {
-        return processes_;
-    }
+    ProcessConstPtr get_process(const std::string& name) const;
 
     /**
      * Get all process info for status reporting
@@ -116,8 +109,7 @@ private:
     boost::asio::signal_set signals_;
     boost::asio::steady_timer timer_;
 
-    std::vector<std::unique_ptr<Process>> processes_;
-    std::map<std::string, Process*> process_map_;
+    std::map<std::string, ProcessPtr> process_map_;
     std::chrono::milliseconds update_interval_;
 };
 

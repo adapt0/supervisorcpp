@@ -17,6 +17,7 @@
 #include <boost/test/unit_test.hpp>
 #include "config/config_parser.h"
 #include "logger/logger.h"
+#include "process/process.h"
 #include "process/process_manager.h"
 #include "rpc/rpc_server.h"
 #include "util/test_util.h"
@@ -536,8 +537,8 @@ BOOST_AUTO_TEST_CASE(SyncProcessesAddsAndRemoves) {
     boost::asio::io_context io_context;
     process::ProcessManager pm{io_context, 100ms};
     const auto pm_pid_for = [&pm](const std::string& name) {
-        const auto* process = pm.get_process(name);
-        return (process) ? process->pid() : -1;
+        const auto process_ptr = pm.get_process(name);
+        return (process_ptr) ? process_ptr->pid() : -1;
     };
 
     // Start with alpha

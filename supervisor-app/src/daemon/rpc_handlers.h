@@ -25,17 +25,17 @@ inline void register_process_handlers(rpc::RpcServer& server, process::ProcessMa
 
     server.register_handler("supervisor.getProcessInfo", [&pm](const RpcParams& params) {
         if (params.empty()) throw std::runtime_error("Process name required");
-        const auto* proc = pm.get_process(params[0]);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + params[0]);
-        return wrap(proc->get_info()).str();
+        const auto process_ptr = pm.get_process(params[0]);
+        if (!process_ptr) throw std::runtime_error("BAD_NAME: " + params[0]);
+        return wrap(process_ptr->get_info()).str();
     });
 
     server.register_handler("supervisor.startProcess", [&pm](const RpcParams& params) {
         if (params.empty()) throw std::runtime_error("Process name required");
         const auto& name = params[0];
-        const auto* proc = pm.get_process(name);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
-        const auto st = proc->state();
+        const auto process_cptr = pm.get_process(name);
+        if (!process_cptr) throw std::runtime_error("BAD_NAME: " + name);
+        const auto st = process_cptr->state();
         if (st == process::State::RUNNING || st == process::State::STARTING) {
             throw std::runtime_error("ALREADY_STARTED: " + name);
         }
@@ -49,9 +49,9 @@ inline void register_process_handlers(rpc::RpcServer& server, process::ProcessMa
     server.register_handler("supervisor.stopProcess", [&pm](const RpcParams& params) {
         if (params.empty()) throw std::runtime_error("Process name required");
         const auto& name = params[0];
-        const auto* proc = pm.get_process(name);
-        if (!proc) throw std::runtime_error("BAD_NAME: " + name);
-        const auto st = proc->state();
+        const auto process_ptr = pm.get_process(name);
+        if (!process_ptr) throw std::runtime_error("BAD_NAME: " + name);
+        const auto st = process_ptr->state();
         if (st == process::State::STOPPED || st == process::State::EXITED || st == process::State::FATAL) {
             throw std::runtime_error("NOT_RUNNING: " + name);
         }

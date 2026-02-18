@@ -2,6 +2,7 @@
 // Copyright (c) 2025-2026 Chris Byrne
 
 #include "process_manager.h"
+#include "process.h"
 #include "logger/logger.h"
 #include <algorithm>
 #include <set>
@@ -30,32 +31,27 @@ ProcessManager::~ProcessManager() {
 }
 
 void ProcessManager::add_process(const config::ProgramConfig& config) {
-    auto process_uptr = std::make_unique<Process>(io_context_, config);
-    auto* proc_raw = process_uptr.get();
-
-    processes_.push_back(std::move(process_uptr));
-    process_map_[config.name] = proc_raw;
-
+    process_map_[config.name] = Process::create(io_context_, config);
     LOG_DEBUG << "Added process '" << config.name << "' to manager";
 }
 
 void ProcessManager::start_all() {
-    if (processes_.empty()) return;
-    LOG_INFO << "Starting all processes (" << processes_.size() << " total)";
+    if (process_map_.empty()) return;
+    LOG_INFO << "Starting all processes (" << process_map_.size() << " total)";
 
-    for (auto& process : processes_) {
-        process->start();
+    for (const auto& [_, process_ptr] : process_map_) {
+        process_ptr->start();
     }
 }
 
 void ProcessManager::stop_all() {
-    if (processes_.empty()) return;
+    if (process_map_.empty()) return;
 
     // Send stop signal to all processes with active PIDs (RUNNING, STARTING, etc.)
     int signaled = 0;
-    for (auto& process : processes_) {
-        if (process->pid() > 0) {
-            process->stop();
+    for (const auto& [_, process_ptr] : process_map_) {
+        if (process_ptr->pid() > 0) {
+            process_ptr->stop();
             signaled++;
         }
     }
@@ -70,9 +66,9 @@ void ProcessManager::stop_all() {
         const pid_t pid = waitpid(-1, &status, WNOHANG);
         if (pid > 0) {
             LOG_DEBUG << "Reaped child process (PID: " << pid << ", status=" << status << ')';
-            for (auto& process : processes_) {
-                if (process->pid() == pid) {
-                    process->on_exit(status);
+            for (const auto& [_, process_ptr] : process_map_) {
+                if (process_ptr->pid() == pid) {
+                    process_ptr->on_exit(status);
                     break;
                 }
             }
@@ -82,22 +78,23 @@ void ProcessManager::stop_all() {
     }
 
     // Force kill any remaining processes
-    for (auto& process : processes_) {
-        if (process->pid() > 0) {
-            LOG_WARN << "Force killing process '" << process->name() << "'";
-            process->kill();
+    for (const auto& [_, process_ptr] : process_map_) {
+        if (process_ptr->pid() > 0) {
+            LOG_WARN << "Force killing process '" << process_ptr->name() << "'";
+            process_ptr->kill();
         }
     }
 }
 
 bool ProcessManager::start_process(const std::string& name) {
     const auto it = process_map_.find(name);
-    if (it == process_map_.end()) {
+    if (std::end(process_map_) == it) {
         LOG_ERROR << "Process '" << name << "' not found";
         return false;
     }
 
-    return it->second->start();
+    const auto process_ptr = it->second;
+    return (process_ptr) ? process_ptr->start() : false;
 }
 
 bool ProcessManager::stop_process(const std::string& name) {
@@ -107,17 +104,17 @@ bool ProcessManager::stop_process(const std::string& name) {
         return false;
     }
 
-    auto* proc = it->second;
-    if (!proc->stop()) return false;
+    const auto process_ptr = it->second;
+    if (!process_ptr || !process_ptr->stop()) return false;
 
     // Wait for process to actually exit (reap it synchronously)
     const auto deadline = std::chrono::steady_clock::now()
-        + std::chrono::seconds(proc->config().stopwaitsecs + 1);
-    while (proc->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
+        + std::chrono::seconds(process_ptr->config().stopwaitsecs + 1);
+    while (process_ptr->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
         int status;
-        const pid_t pid = waitpid(proc->pid(), &status, WNOHANG);
+        const pid_t pid = waitpid(process_ptr->pid(), &status, WNOHANG);
         if (pid > 0) {
-            proc->on_exit(status);
+            process_ptr->on_exit(status);
         } else {
             io_context_.run_for(std::chrono::milliseconds(10));
         }
@@ -134,7 +131,6 @@ bool ProcessManager::remove_process(const std::string& name) {
         stop_process(name);
     }
 
-    std::erase_if(processes_, [proc{it->second}](const auto& p) { return p.get() == proc; });
     process_map_.erase(it);
 
     LOG_INFO << "Removed process '" << name << "'";
@@ -188,27 +184,27 @@ void ProcessManager::sync_processes(
     }
 }
 
-const Process* ProcessManager::get_process(const std::string& name) const {
+ProcessConstPtr ProcessManager::get_process(const std::string& name) const {
     const auto it = process_map_.find(name);
-    return (std::end(process_map_) != it) ? it->second : nullptr;
+    return (std::end(process_map_) != it) ? it->second : ProcessConstPtr{};
 }
 
 std::vector<ProcessInfo> ProcessManager::get_all_process_info() const {
     std::vector<ProcessInfo> info_list;
-    info_list.reserve(processes_.size());
+    info_list.reserve(process_map_.size());
 
-    for (const auto& process : processes_) {
-        info_list.push_back(process->get_info());
+    for (const auto& [_, process_ptr] : process_map_) {
+        info_list.push_back(process_ptr->get_info());
     }
 
     return info_list;
 }
 
 bool ProcessManager::has_running_processes() const {
-    return std::any_of(
-        std::begin(processes_), std::end(processes_),
-        [](const auto& p) { return p->pid() > 0; }
-    );
+    for (const auto& [_, process_ptr] : process_map_) {
+        if (process_ptr->pid() > 0) return true;
+    }
+    return false;
 }
 
 void ProcessManager::begin_signal_handler_() {
@@ -232,9 +228,9 @@ void ProcessManager::handle_sigchld_() {
         LOG_DEBUG << "Reaped child process " << pid << ", status=" << status;
 
         // Find the process and notify it
-        for (auto& process : processes_) {
-            if (process->pid() == pid) {
-                process->on_exit(status);
+        for (const auto& [_, process_ptr] : process_map_) {
+            if (process_ptr->pid() == pid) {
+                process_ptr->on_exit(status);
                 break;
             }
         }
@@ -252,8 +248,8 @@ void ProcessManager::begin_update_timer_() {
 
 void ProcessManager::on_timer_() {
     // Update all processes
-    for (auto& process : processes_) {
-        process->update();
+    for (const auto& [_, process_ptr] : process_map_) {
+        process_ptr->update();
     }
 
     // Schedule next update
