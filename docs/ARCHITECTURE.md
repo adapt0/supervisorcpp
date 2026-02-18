@@ -4,7 +4,7 @@
 
 ### Busybox-Style Multi-Call Binary
 
-Single `supervisor` binary dispatches by `argv[0]`. Symlinks (`supervisord`, `supervisorctl`) select the mode. Default mode is daemon. The `supervisor ctl` subcommand also works.
+Single `supervisor` binary dispatches by `argv[0]`. Symlinks (`supervisord`, `supervisorctl`) select the mode. Default mode is ctl — this avoids accidentally starting a second daemon when tab-completion stops at `supervisor`. Use `supervisor -d` or `supervisor --daemon` to start the daemon explicitly.
 
 This matches Alpine Linux philosophy and halves the installed size versus two separate binaries.
 

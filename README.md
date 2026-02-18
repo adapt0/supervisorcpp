@@ -24,15 +24,15 @@ supervisorcpp uses a **busybox-style multi-call binary**. A single `supervisor` 
 ```bash
 # Start the daemon
 supervisord -c /etc/supervisord.conf
-supervisor -c /etc/supervisord.conf      # equivalent (daemon is the default mode)
+supervisor -d -c /etc/supervisord.conf   # equivalent via -d/--daemon flag
 
-# Control processes
+# Control processes (ctl is the default mode)
 supervisorctl status
+supervisor status                         # equivalent (ctl is the default)
 supervisorctl start myapp
 supervisorctl stop myapp
 supervisorctl restart myapp
 supervisorctl shutdown
-supervisor ctl status                     # equivalent via subcommand
 ```
 
 > **Note:** Unlike Python supervisord, supervisorcpp always runs in the foreground.

@@ -12,25 +12,31 @@
 
 using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
 
-int supervisorctl_main(int argc, char* argv[]) {
+int supervisorctl_main(int argc, char* argv[], bool called_supervisorctl) {
     try {
         namespace po = boost::program_options;
 
+        const auto name = std::string{(called_supervisorctl) ? "supervisorctl" : "supervisor"};
         auto parsed_opt = supervisorcpp::parse_args(
             argc, argv,
-            "supervisorctl - control supervisord processes",
-            [](auto& parser, auto& desc) {
+            name + " - control supervisord processes",
+            [called_supervisorctl](auto& parser, auto& desc) {
                 (void)parser;
+                if (!called_supervisorctl) {
+                    desc.add_options()
+                        ("daemon,d", "Start daemon (supervisord)")
+                    ;
+                }
                 desc.add_options()
                     ("serverurl,s", po::value<std::string>(), "Server URL (e.g. unix:///run/supervisord.sock)")
                 ;
             },
-            [] {
+            [&name] {
                 SupervisorCtlClient{""}.cmdHelp(supervisorcpp::rpc::RpcParams{});
                 std::cout << "\nUsage:\n";
-                std::cout << "  supervisorctl status           # Show all process status\n";
-                std::cout << "  supervisorctl start myapp      # Start a specific process\n";
-                std::cout << "  supervisorctl                  # Interactive mode\n";
+                std::cout << "  " << name << " status           # Show all process status\n";
+                std::cout << "  " << name << " start myapp      # Start a specific process\n";
+                std::cout << "  " << name << "                  # Interactive mode\n";
             }
         );
         if (!parsed_opt) return 0;

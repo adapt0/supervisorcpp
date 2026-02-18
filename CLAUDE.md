@@ -30,7 +30,7 @@ supervisor-lib/
 
 supervisor-app/
   src/
-    main.cpp              # Dispatches by argv[0]: supervisord (default) or supervisorctl
+    main.cpp              # Dispatches by argv[0]: supervisord, supervisorctl, or ctl (default)
     args_parser.cpp/.h    # Shared CLI argument parsing
     daemon/               # Daemon (supervisord)
       supervisord.cpp/.h  # Daemon entry point + class
