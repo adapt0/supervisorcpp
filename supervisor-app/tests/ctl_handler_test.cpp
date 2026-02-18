@@ -17,33 +17,15 @@
 #include <thread>
 #include <boost/asio.hpp>
 
-namespace rpc = supervisorcpp::rpc;
+namespace config = supervisorcpp::config;
 namespace process = supervisorcpp::process;
+namespace rpc = supervisorcpp::rpc;
 using namespace std::chrono_literals;
 using TempManager = test_util::TempManager;
 using SupervisorCtlClient = supervisorcpp::SupervisorCtlClient;
 
-struct CtlFixture {
-    CtlFixture() {
-        supervisorcpp::config::ProgramConfig cfg;
-        cfg.name = "testproc";
-        cfg.command = "/bin/sleep 60";
-        cfg.autorestart = false;
-        cfg.startsecs = 1;
-        cfg.stdout_log.file = log2_.path();
-        pm_.add_process(cfg);
-
-        supervisorcpp::register_process_handlers(*server_, pm_);
-        server_->start();
-
-        // Run io_context in background so server can handle connections
-        server_thread_ = std::jthread([this](std::stop_token) {
-            const auto work = boost::asio::make_work_guard(io_);
-            io_.run();
-        });
-    }
-
-    ~CtlFixture() {
+struct RpcFixture {
+    ~RpcFixture() {
         pm_.stop_all();
         server_->stop();
         io_.stop();
@@ -76,19 +58,27 @@ struct CtlFixture {
         return false;
     }
 
-    void wait_for(process::State state) {
-        poll_until([this, state] {
-            const auto info = pm_.get_all_process_info();
-            return !info.empty() && info[0].state == state;
+    void wait_for(const std::string& name, process::State state) {
+        poll_until([this, &name, state] {
+            const auto* proc = pm_.get_process(name);
+            return proc && proc->state() == state;
         });
     }
 
     auto& pm() noexcept { return pm_; }
+    auto& server() noexcept { return *server_; }
 
-private:
+protected:
+    void start_server() {
+        supervisorcpp::register_process_handlers(*server_, pm_);
+        server_->start();
+        server_thread_ = std::jthread([this](std::stop_token) {
+            const auto work = boost::asio::make_work_guard(io_);
+            io_.run();
+        });
+    }
+
     TempManager::Cleanup sock_ = TempManager::file("ctl_test.sock");
-    TempManager::Cleanup log1_ = TempManager::file("ctl_test_d.log");
-    TempManager::Cleanup log2_ = TempManager::file("ctl_test_p.log");
 
     boost::asio::io_context io_;
     process::ProcessManager pm_{io_, 100ms};
@@ -96,8 +86,24 @@ private:
 
     std::ostringstream out_;
     std::ostringstream err_;
-
     std::jthread server_thread_;
+};
+
+struct CtlFixture : RpcFixture {
+    CtlFixture() {
+        config::ProgramConfig cfg;
+        cfg.name = "testproc";
+        cfg.command = "/bin/sleep 60";
+        cfg.autorestart = false;
+        cfg.startsecs = 1;
+        cfg.stdout_log.file = log_.path();
+        pm().add_process(cfg);
+
+        start_server();
+    }
+
+private:
+    TempManager::Cleanup log_ = TempManager::file("ctl_test_p.log");
 };
 
 
@@ -137,7 +143,7 @@ BOOST_FIXTURE_TEST_CASE(ctl__stop_stopped_process, CtlFixture) {
 
 BOOST_FIXTURE_TEST_CASE(ctl__start_already_running, CtlFixture) {
     pm().start_process("testproc");
-    wait_for(process::State::RUNNING);
+    wait_for("testproc", process::State::RUNNING);
 
     auto client = make_client();
     const auto rc = client.execute_command("start", {"testproc"});
@@ -166,7 +172,7 @@ BOOST_FIXTURE_TEST_CASE(ctl__start_and_stop, CtlFixture) {
         check_out_contains("started");
     }
 
-    wait_for(process::State::RUNNING);
+    wait_for("testproc", process::State::RUNNING);
 
     {
         auto client = make_client();
@@ -186,3 +192,4 @@ BOOST_FIXTURE_TEST_CASE(ctl__status_all, CtlFixture) {
     BOOST_CHECK_EQUAL(rc, 0);
     check_out_contains("testproc");
 }
+

@@ -29,6 +29,7 @@ Configuration ConfigParser::parse_file(const fs::path& config_file) {
     }
 
     Configuration config;
+    config.config_file = fs::weakly_canonical(config_file);
     parse_single_file_(config_file, config, 0);
     validate_config_(config);
 

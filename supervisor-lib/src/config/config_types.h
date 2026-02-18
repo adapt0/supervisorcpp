@@ -96,6 +96,8 @@ struct ProgramConfig {
         std::optional<fs::path> file;
         size_t file_maxbytes{50 * 1024 * 1024}; // 50MB default
         int file_backups{10};
+
+        bool operator==(const Log&) const = default;
     };
     Log stdout_log;
     Log stderr_log;
@@ -107,6 +109,8 @@ struct ProgramConfig {
     int stopwaitsecs{10};                      // SIGTERM to SIGKILL timeout
     std::string stopsignal{"TERM"};            // signal to send on stop
     std::optional<mode_t> umask;               // per-process umask (applied before exec)
+
+    bool operator==(const ProgramConfig&) const = default;
 
     /**
      * Substitute variables in a string (e.g., %(program_name)s)
@@ -129,6 +133,7 @@ struct ProgramConfig {
  * Complete supervisord configuration
  */
 struct Configuration {
+    fs::path config_file;           ///< path to the config file (for reload)
     UnixHttpServerConfig unix_http_server;
     SupervisordConfig supervisord;
     std::vector<ProgramConfig> programs;

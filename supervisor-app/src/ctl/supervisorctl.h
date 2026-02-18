@@ -174,8 +174,9 @@ private:
     }
 
     int cmdReload_(const RpcParams&) {
-        out_ << "Restarting supervisord..." << std::endl;
-        call_method_("supervisor.shutdown");
+        out_ << "Reloading supervisord configuration..." << std::endl;
+        call_method_("supervisor.reloadConfig");
+        out_ << "Configuration reloaded" << std::endl;
         return 0;
     }
 

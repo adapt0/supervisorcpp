@@ -528,4 +528,69 @@ stdout_logfile=)" + stdout_log.str() + "\n");
     BOOST_CHECK_EQUAL(perms, 0600);
 }
 
+// Test 11: sync_processes adds new and removes old processes
+BOOST_AUTO_TEST_CASE(SyncProcessesAddsAndRemoves) {
+    const auto sock = TempManager::file("sock_11.sock");
+    const auto log1 = TempManager::file("supervisord_11.log");
+
+    boost::asio::io_context io_context;
+    process::ProcessManager pm{io_context, 100ms};
+    const auto pm_pid_for = [&pm](const std::string& name) {
+        const auto* process = pm.get_process(name);
+        return (process) ? process->pid() : -1;
+    };
+
+    // Start with alpha
+    config::ProgramConfig alpha;
+    alpha.name = "alpha";
+    alpha.command = "/bin/sleep 60";
+    pm.add_process(alpha);
+
+    pm.start_all();
+    BOOST_CHECK_NE(pm_pid_for("alpha"), -1);
+    BOOST_CHECK_EQUAL(pm_pid_for("beta"), -1);
+
+    // now re-sync with the same config
+    const auto pid_alpha_before = pm_pid_for("alpha");
+    pm.sync_processes({ alpha });
+
+    // no change
+    BOOST_CHECK_EQUAL(pm_pid_for("alpha"), pid_alpha_before);
+    BOOST_CHECK_EQUAL(pm_pid_for("beta"), -1);
+
+
+    // Sync with beta only — alpha should be removed, beta added
+    config::ProgramConfig beta;
+    beta.name = "beta";
+    beta.command = "/bin/sleep 60";
+
+    pm.sync_processes({beta});
+
+    BOOST_CHECK_EQUAL(pm_pid_for("alpha"), -1);
+    BOOST_CHECK_NE(pm_pid_for("beta"), -1);
+
+
+    // now re-sync with the same config
+    const auto pid_beta_before = pm_pid_for("beta");
+    pm.sync_processes({beta});
+
+    // no change
+    BOOST_CHECK_EQUAL(pm_pid_for("alpha"), -1);
+    BOOST_CHECK_EQUAL(pm_pid_for("beta"), pid_beta_before);
+
+
+    // re-add alpha
+    pm.sync_processes({ alpha, beta });
+    BOOST_CHECK_NE(pm_pid_for("alpha"), -1);
+    BOOST_CHECK_NE(pm_pid_for("alpha"), pid_alpha_before);
+    BOOST_CHECK_EQUAL(pm_pid_for("beta"), pid_beta_before);
+
+    // remove them all
+    pm.sync_processes({ });
+    BOOST_CHECK_EQUAL(pm_pid_for("alpha"), -1);
+    BOOST_CHECK_EQUAL(pm_pid_for("beta"), -1);
+
+    pm.stop_all();
+}
+
 BOOST_AUTO_TEST_SUITE_END()

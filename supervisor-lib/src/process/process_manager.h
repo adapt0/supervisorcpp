@@ -58,6 +58,18 @@ public:
     bool stop_process(const std::string& name);
 
     /**
+     * Stop and remove a process by name
+     * @return true if removed successfully
+     */
+    bool remove_process(const std::string& name);
+
+    /**
+     * Synchronize running processes with a new config.
+     * Starts added programs, stops removed ones, restarts changed ones
+     */
+    void sync_processes(const std::vector<config::ProgramConfig>& new_programs);
+
+    /**
      * Get process by name
      */
     const Process* get_process(const std::string& name) const;

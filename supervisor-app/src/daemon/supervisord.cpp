@@ -37,6 +37,18 @@ int Supervisord::run() {
         }
     });
 
+    // SIGHUP triggers config reload
+    boost::asio::signal_set sighup(io_context_, SIGHUP);
+    std::function<void(const boost::system::error_code&, int)> sighup_handler;
+    sighup_handler = [this, &sighup, &sighup_handler](const boost::system::error_code& error, int) {
+        if (!error) {
+            LOG_INFO << "Received SIGHUP, reloading configuration";
+            reload_config_();
+            sighup.async_wait(sighup_handler);
+        }
+    };
+    sighup.async_wait(sighup_handler);
+
     // Ignore SIGPIPE
     std::signal(SIGPIPE, SIG_IGN);
 
@@ -86,6 +98,11 @@ void Supervisord::register_rpc_handlers_() {
         return Value{true}.str();
     });
 
+    rpc_server_ptr_->register_handler("supervisor.reloadConfig", [this](const RpcParams&) {
+        reload_config_();
+        return Value{true}.str();
+    });
+
     // Compatibility stubs for Python supervisorctl handshake
     const auto api_version = [](const RpcParams&) -> std::string {
         return "<string>3.0</string>";
@@ -101,6 +118,32 @@ void Supervisord::register_rpc_handlers_() {
     rpc_server_ptr_->register_handler("supervisor.getPID", [](const RpcParams&) -> std::string {
         return "<int>" + std::to_string(getpid()) + "</int>";
     });
+}
+
+void Supervisord::reload_config_() {
+    if (config_.config_file.empty()) {
+        LOG_ERROR << "No config file path stored, cannot reload";
+        return;
+    }
+
+    if (daemon_state_.load() == DaemonState::RESTARTING) {
+        LOG_WARN << "Reload already in progress, ignoring";
+        return;
+    }
+
+    try {
+        daemon_state_.store(DaemonState::RESTARTING);
+
+        LOG_INFO << "Reloading configuration from " << config_.config_file;
+        const auto new_config = config::ConfigParser::parse_file(config_.config_file);
+        process_manager_.sync_processes(new_config.programs);
+        config_ = new_config;
+        daemon_state_.store(DaemonState::RUNNING);
+
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Failed to reload configuration: " << e.what();
+        daemon_state_.store(DaemonState::RUNNING);
+    }
 }
 
 } // namespace supervisorcpp

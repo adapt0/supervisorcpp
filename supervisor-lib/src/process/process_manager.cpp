@@ -4,6 +4,7 @@
 #include "process_manager.h"
 #include "logger/logger.h"
 #include <algorithm>
+#include <set>
 #include <thread>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -122,6 +123,69 @@ bool ProcessManager::stop_process(const std::string& name) {
         }
     }
     return true;
+}
+
+bool ProcessManager::remove_process(const std::string& name) {
+    const auto it = process_map_.find(name);
+    if (it == process_map_.end()) return false;
+
+    // Stop the process first if running
+    if (it->second->pid() > 0) {
+        stop_process(name);
+    }
+
+    std::erase_if(processes_, [proc{it->second}](const auto& p) { return p.get() == proc; });
+    process_map_.erase(it);
+
+    LOG_INFO << "Removed process '" << name << "'";
+    return true;
+}
+
+void ProcessManager::sync_processes(
+    const std::vector<config::ProgramConfig>& new_programs)
+{
+    size_t changed = 0;
+    {
+        // Build set of new program names
+        std::set<std::string> new_names;
+        for (const auto& prog : new_programs) {
+            new_names.insert(prog.name);
+        }
+
+        // removed programs (in current but not in new)
+        for (auto it = std::begin(process_map_); it != std::end(process_map_); ) {
+            const auto& name = it->first;
+            ++it;
+
+            if (!new_names.contains(name)) {
+                ++changed;
+                remove_process(name);
+            }
+        }
+    }
+
+    // Find added and changed programs
+    for (const auto& prog : new_programs) {
+        const auto it = process_map_.find(prog.name);
+        if (it == std::end(process_map_)) {
+            // New program
+            add_process(prog);
+            start_process(prog.name);
+            ++changed;
+        } else if (!(it->second->config() == prog)) {
+            // Config changed — restart with new config
+            LOG_INFO << "Config changed for process '" << prog.name << "', restarting";
+            remove_process(prog.name);
+            add_process(prog);
+            start_process(prog.name);
+            ++changed;
+        }
+        // Unchanged — leave running
+    }
+
+    if (0 == changed) {
+        LOG_INFO << "Process configuration unchanged";
+    }
 }
 
 const Process* ProcessManager::get_process(const std::string& name) const {

@@ -28,6 +28,7 @@ public:
 
 private:
     void register_rpc_handlers_();
+    void reload_config_();
 
     boost::asio::io_context   io_context_;
     config::Configuration     config_;
