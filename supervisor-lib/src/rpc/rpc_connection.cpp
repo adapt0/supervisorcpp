@@ -106,10 +106,10 @@ void RpcConnection::process_request_(const std::string& request) {
             throw std::runtime_error("Invalid HTTP request");
         }
 
-        const auto xml_body = request.substr(body_start);
-
         // Parse XML-RPC request
-        const auto [method_name, params] = parse_xmlrpc_request_(xml_body);
+        const auto [method_name, params] = parse_xmlrpc_request_(
+            request.substr(body_start)
+        );
 
         LOG_DEBUG << "RPC call: " << method_name;
 
@@ -145,11 +145,11 @@ void RpcConnection::handle_write_(const boost::system::error_code& /*error*/) {
     socket_.close(ec);
 }
 
-std::pair<std::string, RpcParams> RpcConnection::parse_xmlrpc_request_(const std::string& xml) {
+std::pair<std::string, RpcParams> RpcConnection::parse_xmlrpc_request_(std::string&& xml) {
     try {
         pt::ptree tree;
         {
-            std::istringstream iss{xml};
+            std::istringstream iss{std::move(xml)};
             pt::read_xml(iss, tree);
         }
 

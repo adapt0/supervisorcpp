@@ -62,7 +62,7 @@ private:
      * Parse XML-RPC request
      * Returns method name and parameters
      */
-    std::pair<std::string, RpcParams> parse_xmlrpc_request_(const std::string& xml);
+    std::pair<std::string, RpcParams> parse_xmlrpc_request_(std::string&& xml);
 
     /**
      * Generate XML-RPC response

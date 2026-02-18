@@ -10,6 +10,8 @@
 #include <optional>
 #include <set>
 #include <sys/stat.h>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/trim.hpp>
 
 namespace supervisorcpp::config {
 
@@ -21,35 +23,30 @@ namespace fs = std::filesystem;
 inline size_t parse_size(const std::string& size_str) {
     if (size_str.empty()) return 0;
 
-    size_t multiplier = 1;
-    std::string num_str = size_str;
-
     // Check for suffix
-    if (size_str.size() >= 2) {
-        std::string suffix = size_str.substr(size_str.size() - 2);
-        if (suffix == "KB" || suffix == "kb") {
+    auto num_str = size_str;
+    size_t multiplier = 1;
+    if (num_str.size() >= 2) {
+        const auto suffix = num_str.substr(num_str.size() - 2);
+        if (boost::iequals(suffix, "kB")) {
             multiplier = 1024;
-            num_str = size_str.substr(0, size_str.size() - 2);
-        } else if (suffix == "MB" || suffix == "mb") {
+            num_str.erase(num_str.size() - 2);
+        } else if (boost::iequals(suffix, "MB")) {
             multiplier = 1024 * 1024;
-            num_str = size_str.substr(0, size_str.size() - 2);
-        } else if (suffix == "GB" || suffix == "gb") {
+            num_str.erase(num_str.size() - 2);
+        } else if (boost::iequals(suffix, "gB")) {
             multiplier = 1024 * 1024 * 1024;
-            num_str = size_str.substr(0, size_str.size() - 2);
+            num_str.erase(num_str.size() - 2);
         }
     }
 
     try {
         // Validate that the number part only contains digits and optional whitespace
-        std::string trimmed = num_str;
-        trimmed.erase(0, trimmed.find_first_not_of(" \t"));
-        trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
-
-        if (trimmed.empty() || !std::all_of(std::begin(trimmed), std::end(trimmed), ::isdigit)) {
+        boost::trim(num_str);
+        if (num_str.empty() || !std::all_of(std::begin(num_str), std::end(num_str), ::isdigit)) {
             throw std::invalid_argument("Invalid size format: " + size_str);
         }
-
-        return std::stoull(trimmed) * multiplier;
+        return std::stoull(num_str) * multiplier;
     } catch (const std::invalid_argument&) {
         throw std::invalid_argument("Invalid size format: " + size_str);
     } catch (const std::out_of_range&) {

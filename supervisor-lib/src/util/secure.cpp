@@ -123,11 +123,7 @@ fs::path validate_pidfile_path(const fs::path& pidfile_path) {
 
 void validate_command_path(const std::string& command) {
     // Extract first token (the actual command path)
-    std::string cmd_path = command;
-    size_t space_pos = cmd_path.find(' ');
-    if (space_pos != std::string::npos) {
-        cmd_path = cmd_path.substr(0, space_pos);
-    }
+    const auto cmd_path = command.substr(0, command.find(' '));
 
     // Must be absolute path for security
     if (cmd_path.empty() || cmd_path[0] != '/') {
