@@ -2,7 +2,12 @@
 # Copyright (c) 2025-2026 Chris Byrne
 
 cmake_minimum_required(VERSION 3.28)
-project(supervisorcpp VERSION 26.02.0 LANGUAGES CXX)
+project(supervisorcpp
+    VERSION 26.02.0
+    DESCRIPTION "Lightweight process supervisor for Alpine Linux"
+    LANGUAGES CXX
+)
+set(PROJECT_URL "https://github.com/adapt0/supervisorcpp")
 
 # C++23 standard
 set(CMAKE_CXX_STANDARD 23)
@@ -148,11 +153,15 @@ install(TARGETS supervisor
 
 # Create symlinks for busybox-style invocation
 install(CODE "
+    set(_bindir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin\")
     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-        supervisor \${CMAKE_INSTALL_PREFIX}/bin/supervisord)
+        supervisor \${_bindir}/supervisord)
     execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-        supervisor \${CMAKE_INSTALL_PREFIX}/bin/supervisorctl)
+        supervisor \${_bindir}/supervisorctl)
 ")
+
+# Generate APKBUILD from template
+configure_file(cmake/APKBUILD.in ${CMAKE_BINARY_DIR}/APKBUILD @ONLY)
 
 # Print configuration summary
 message(STATUS "")

@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025-2026 Chris Byrne
+# https://github.com/adapt0/supervisorcpp
+pkgname=@PROJECT_NAME@
+pkgver=@PROJECT_VERSION@
+pkgrel=0
+pkgdesc="@PROJECT_DESCRIPTION@"
+url="@PROJECT_URL@"
+arch="all"
+license="MIT"
+makedepends="cmake ninja g++ boost-dev boost1.84-static"
+source=""
+builddir="$srcdir/$pkgname-$pkgver"
+
+build() {
+    cmake -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    ninja -C build -j"$(nproc)"
+}
+
+check() {
+    ctest --output-on-failure --test-dir build
+}
+
+package() {
+    DESTDIR="$pkgdir" ninja -C build install
+}

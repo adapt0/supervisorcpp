@@ -142,11 +142,11 @@ environment=PATH="/usr/local/bin:/usr/bin",CONFIG_ENV="production"
 
 - C++23 compiler (GCC 13+ or Clang 16+)
 - CMake 3.20+
-- Boost 1.75+ (log, filesystem, system, asio, property_tree, program_options, unit_test_framework)
+- Boost 1.80+ (log, filesystem, system, asio, property_tree, program_options, unit_test_framework)
 
 ```bash
 # Alpine Linux
-apk add cmake g++ boost-dev ninja
+apk add cmake g++ boost-dev boost1.84-static ninja
 
 # Ubuntu/Debian
 apt-get install cmake g++ libboost-all-dev ninja-build
