@@ -59,8 +59,14 @@ void ProcessManager::stop_all() {
     if (0 == signaled) return;
     LOG_INFO << "Stopping " << signaled << " processes";
 
-    // Actively reap children instead of blocking sleep
-    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+    // Wait long enough for per-process SIGKILL timers to fire (process.cpp checks stopwaitsecs)
+    int max_wait = 0;
+    for (const auto& [_, process_ptr] : process_map_) {
+        if (process_ptr->pid() > 0) {
+            max_wait = std::max(max_wait, process_ptr->config().stopwaitsecs);
+        }
+    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(max_wait + 1);
     while (has_running_processes() && std::chrono::steady_clock::now() < deadline) {
         int status;
         const pid_t pid = waitpid(-1, &status, WNOHANG);
