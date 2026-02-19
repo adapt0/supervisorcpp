@@ -66,22 +66,10 @@ void ProcessManager::stop_all() {
             max_wait = std::max(max_wait, process_ptr->config().stopwaitsecs);
         }
     }
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(max_wait + 1);
-    while (has_running_processes() && std::chrono::steady_clock::now() < deadline) {
-        int status;
-        const pid_t pid = waitpid(-1, &status, WNOHANG);
-        if (pid > 0) {
-            LOG_DEBUG << "Reaped child process (PID: " << pid << ", status=" << status << ')';
-            for (const auto& [_, process_ptr] : process_map_) {
-                if (process_ptr->pid() == pid) {
-                    process_ptr->on_exit(status);
-                    break;
-                }
-            }
-        } else {
-            io_context_.run_for(std::chrono::milliseconds(10));
-        }
-    }
+    reap_until_(
+        std::chrono::seconds(max_wait + 1),
+        [this] { return has_running_processes(); }
+    );
 
     // Force kill any remaining processes
     for (const auto& [_, process_ptr] : process_map_) {
@@ -114,17 +102,10 @@ bool ProcessManager::stop_process(const std::string& name) {
     if (!process_ptr || !process_ptr->stop()) return false;
 
     // Wait for process to actually exit (reap it synchronously)
-    const auto deadline = std::chrono::steady_clock::now()
-        + std::chrono::seconds(process_ptr->config().stopwaitsecs + 1);
-    while (process_ptr->pid() > 0 && std::chrono::steady_clock::now() < deadline) {
-        int status;
-        const pid_t pid = waitpid(process_ptr->pid(), &status, WNOHANG);
-        if (pid > 0) {
-            process_ptr->on_exit(status);
-        } else {
-            io_context_.run_for(std::chrono::milliseconds(10));
-        }
-    }
+    reap_until_(
+        std::chrono::seconds(process_ptr->config().stopwaitsecs + 1),
+        [&process_ptr] { return process_ptr->pid() > 0; }
+    );
     return true;
 }
 
@@ -213,6 +194,18 @@ bool ProcessManager::has_running_processes() const {
     return false;
 }
 
+void ProcessManager::reap_until_(std::chrono::milliseconds duration_ms,
+                                  std::function<bool()> keep_waiting) {
+    using steady_clock = std::chrono::steady_clock;
+
+    for (const auto deadline = steady_clock::now() + duration_ms;
+        keep_waiting() && steady_clock::now() < deadline;
+    ) {
+        if (handle_sigchld_()) continue;
+        io_context_.run_for(std::chrono::milliseconds(10));
+    }
+}
+
 void ProcessManager::begin_signal_handler_() {
     signals_.async_wait([this](const boost::system::error_code& error, int /*signal_number*/) {
         if (error) return;
@@ -222,16 +215,18 @@ void ProcessManager::begin_signal_handler_() {
     });
 }
 
-void ProcessManager::handle_sigchld_() {
+bool ProcessManager::handle_sigchld_() {
     // Reap all exited children
+    bool reaped = false;
     while (true) {
         int status;
         const pid_t pid = waitpid(-1, &status, WNOHANG);
         if (pid <= 0) {
-            break;  // No more children to reap
+            return reaped;  // No more children to reap
         }
 
-        LOG_DEBUG << "Reaped child process " << pid << ", status=" << status;
+        LOG_DEBUG << "Reaped child process (PID: " << pid << ", status=" << status << ')';
+        reaped = true;
 
         // Find the process and notify it
         for (const auto& [_, process_ptr] : process_map_) {

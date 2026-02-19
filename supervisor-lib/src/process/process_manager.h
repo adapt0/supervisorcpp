@@ -7,6 +7,7 @@
 
 #include "process.h"
 #include "config/config_types.h"
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -93,7 +94,7 @@ private:
     /**
      * Handle SIGCHLD signal
      */
-    void handle_sigchld_();
+    bool handle_sigchld_();
 
     /**
      * Begin next periodic timer for process updates
@@ -104,6 +105,13 @@ private:
      * Periodic update callback
      */
     void on_timer_();
+
+    /**
+     * Reap children until predicate returns false or deadline is reached.
+     * Runs the event loop between reap attempts to allow timers (e.g. SIGKILL) to fire.
+     */
+    void reap_until_(std::chrono::milliseconds duration_ms,
+                     std::function<bool()> keep_waiting);
 
     boost::asio::io_context& io_context_;
     boost::asio::signal_set signals_;
