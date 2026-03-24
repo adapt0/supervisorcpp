@@ -105,6 +105,7 @@ void init_file_logging(const std::filesystem::path& logfile,
     // File sink with rotation and collection
     const auto log_file = logging::add_file_log(
         keywords::file_name = logfile.string(),
+        keywords::target_file_name = logfile.string() + ".%N",
         keywords::open_mode = std::ios::app,
         keywords::rotation_size = max_bytes,
         keywords::target = logfile.parent_path().string(),

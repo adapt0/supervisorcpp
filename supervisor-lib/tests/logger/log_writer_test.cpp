@@ -4,10 +4,15 @@
 #define BOOST_TEST_MODULE LogWriterTest
 #include <boost/test/unit_test.hpp>
 #include "logger/log_writer.h"
+#include "logger/logger.h"
 #include "util/test_util.h"
 #include <cassert>
+#include <chrono>
 #include <fstream>
 #include <filesystem>
+#include <future>
+#include <thread>
+#include <boost/scope_exit.hpp>
 
 namespace fs = std::filesystem;
 using TempManager = test_util::TempManager;
@@ -100,4 +105,40 @@ BOOST_AUTO_TEST_CASE(log_writer__directory_creation) {
         BOOST_CHECK(fs::exists(logfile));
         BOOST_CHECK_EQUAL(test_util::read_file(logfile), "created\n");
     }
+}
+
+BOOST_AUTO_TEST_CASE(logger__file_rotation) {
+    const auto dir = TempManager::dir("logger_future_backups");
+    const auto logfile   = dir.path() / "supervisord.log";
+    const auto logfile_0 = dir.path() / "supervisord.log.0";
+    const auto logfile_1 = dir.path() / "supervisord.log.1";
+
+    BOOST_CHECK(!fs::exists(logfile));
+    BOOST_CHECK(!fs::exists(logfile_0));
+    BOOST_CHECK(!fs::exists(logfile_1));
+
+    init_file_logging(logfile, LogLevel::INFO, 10, 10);
+    BOOST_SCOPE_EXIT_ALL() { shutdown_logging(); };
+
+    std::promise<int> results_promise;
+    std::thread worker([&] {
+        LOG_INFO << "log line 1";
+        int results = 0;
+        if (fs::exists(logfile)) results += 1 << 0;
+        if (!fs::exists(logfile_0)) results += 1 << 1;
+        LOG_INFO << "log line 2";
+        if (fs::exists(logfile_0)) results += 1 << 2;
+        LOG_INFO << "log line 3";
+        if (fs::exists(logfile_0)) results += 1 << 3;
+        if (fs::exists(logfile_1)) results += 1 << 4;
+        results_promise.set_value(results);
+    });
+    worker.detach();
+
+    auto results_future = results_promise.get_future();
+
+    const auto status = results_future.wait_for(std::chrono::seconds(4));
+    BOOST_REQUIRE(std::future_status::ready == status);
+
+    BOOST_CHECK_EQUAL(results_future.get(), 0x1f);
 }
