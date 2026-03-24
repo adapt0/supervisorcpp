@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.28)
 project(supervisorcpp
-    VERSION 26.02.0
+    VERSION 26.03.0
     DESCRIPTION "Lightweight process supervisor for Alpine Linux"
     LANGUAGES CXX
 )
