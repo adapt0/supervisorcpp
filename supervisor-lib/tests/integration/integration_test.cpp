@@ -594,4 +594,52 @@ BOOST_AUTO_TEST_CASE(SyncProcessesAddsAndRemoves) {
     pm.stop_all();
 }
 
+// Test 12: Runtime crash (from RUNNING state) does not consume startretries
+// A process that survives startsecs and then crashes at runtime should go to
+// BACKOFF and restart indefinitely — never FATAL — regardless of startretries.
+BOOST_AUTO_TEST_CASE(RuntimeCrashDoesNotConsumeStartretries) {
+    const auto sock = TempManager::file("sock_12.sock");
+    const auto log1 = TempManager::file("supervisord_12.log");
+    const auto log2 = TempManager::file("runtime_crash.log");
+
+    // Process runs for 2s (survives startsecs=1 → reaches RUNNING), then exits.
+    // startretries=1 so if crashes from STARTING were counted it would go FATAL.
+    const auto cfg = TempManager::config(R"(
+[unix_http_server]
+file=)" + sock.str() + R"(
+
+[supervisord]
+logfile=)" + log1.str() + R"(
+
+[program:runtime_crash]
+command=/bin/sh -c "sleep 2; exit 1"
+autorestart=true
+startsecs=1
+startretries=1
+stdout_logfile=)" + log2.str() + "\n");
+
+    auto parsed_config = config::ConfigParser::parse_file(cfg.path());
+
+    boost::asio::io_context io_context;
+    process::ProcessManager pm(io_context, 100ms);
+
+    for (const auto& prog : parsed_config.programs) {
+        pm.add_process(prog);
+    }
+
+    pm.start_all();
+
+    // Reach RUNNING, crash to BACKOFF, restart to RUNNING, crash to BACKOFF again.
+    // Each cycle is ~3s (1s to reach RUNNING + 2s until process exits).
+    BOOST_CHECK( poll_until_state(io_context, pm, process::State::RUNNING,  5000ms) );
+    BOOST_CHECK( poll_until_state(io_context, pm, process::State::BACKOFF,  5000ms) );
+    BOOST_CHECK( poll_until_state(io_context, pm, process::State::RUNNING,  5000ms) );
+    BOOST_CHECK( poll_until_state(io_context, pm, process::State::BACKOFF,  5000ms) );
+
+    // Must not be FATAL — startretries was not consumed by runtime crashes.
+    const auto info = pm.get_all_process_info();
+    BOOST_REQUIRE_EQUAL(info.size(), 1);
+    BOOST_CHECK_NE(info[0].state, process::State::FATAL);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

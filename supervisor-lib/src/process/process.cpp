@@ -176,12 +176,18 @@ void Process::on_exit(int exit_status) {
     } else if (should_autorestart()) {
         // Unexpected exit with autorestart
         LOG_DEBUG << *this << "Will be restarted";
-        retry_count_++;
 
-        if (retry_count_ >= config_.startretries) {
-            LOG_ERROR << *this << "Failed after " << retry_count_ << " retries, entering FATAL state";
-            set_state_(State::FATAL);
+        if (state_ == State::STARTING) {
+            // Died before startsecs — counts against startretries
+            retry_count_++;
+            if (retry_count_ >= config_.startretries) {
+                LOG_ERROR << *this << "Failed after " << retry_count_ << " retries, entering FATAL state";
+                set_state_(State::FATAL);
+            } else {
+                set_state_(State::BACKOFF);
+            }
         } else {
+            // Runtime crash (was RUNNING) — doesn't consume a startretries slot
             set_state_(State::BACKOFF);
         }
     } else {
@@ -215,8 +221,9 @@ void Process::update() {
         // Exponential backoff: 1, 2, 4, 8, ... seconds, capped at 60
         const auto delay = std::min(1 << retry_count_, 60);
         if (elapsed >= delay) {
-            LOG_INFO << *this << "Retrying start (attempt " << (retry_count_ + 1)
-                     << "/" << config_.startretries << ", waited " << delay << "s)";
+            LOG_INFO << *this << "Restarting after " << delay << "s"
+                    << " (attempt " << (retry_count_ + 1) << "/" << config_.startretries << ")"
+            ;
             start();
         }
         break;
@@ -562,7 +569,7 @@ std::vector<std::string> Process::parse_command_() const {
 void Process::set_state_(State new_state) {
     if (new_state != state_) {
         if (pid_ > 0) {
-            LOG_INFO << *this << "(pid: " << pid_ << ") " << state_ << " -> " << new_state;
+            LOG_INFO << *this << state_ << " -> " << new_state << " (pid: " << pid_ << ")";
         } else {
             LOG_INFO << *this << state_ << " -> " << new_state;
         }
